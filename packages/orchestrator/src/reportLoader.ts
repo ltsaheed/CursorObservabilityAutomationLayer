@@ -40,17 +40,109 @@ interface IGithubContentFile {
   encoding?: string;
 }
 
+const derivePageNameFromFile = (file: string): string => {
+  const baseName = file.split("/").pop() ?? "UnknownPage";
+
+  return baseName.replace(/\.(tsx|ts|jsx|js)$/, "");
+};
+
+const normalizeEvent = (event: unknown): Record<string, unknown> | null => {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+
+  const record = event as Record<string, unknown>;
+  const name =
+    typeof record.name === "string"
+      ? record.name
+      : typeof record.event === "string"
+        ? record.event
+        : "";
+
+  if (!name) {
+    return null;
+  }
+
+  const properties =
+    record.properties && typeof record.properties === "object"
+      ? record.properties
+      : {};
+
+  return {
+    name,
+    properties,
+    trigger: typeof record.trigger === "string" ? record.trigger : "unspecified",
+    ...(typeof record.line === "number" ? { line: record.line } : {}),
+    ...(typeof record.justification === "string"
+      ? { justification: record.justification }
+      : {}),
+  };
+};
+
+const normalizePage = (page: unknown): Record<string, unknown> | null => {
+  if (!page || typeof page !== "object") {
+    return null;
+  }
+
+  const record = page as Record<string, unknown>;
+  const file =
+    typeof record.file === "string"
+      ? record.file
+      : typeof record.path === "string"
+        ? record.path
+        : "";
+  const name =
+    typeof record.name === "string"
+      ? record.name
+      : typeof record.pageName === "string"
+        ? record.pageName
+        : typeof record.page === "string"
+          ? record.page
+          : file
+            ? derivePageNameFromFile(file)
+            : "UnknownPage";
+  const events = Array.isArray(record.events)
+    ? record.events.map(normalizeEvent).filter((event): event is Record<string, unknown> => event !== null)
+    : [];
+
+  return {
+    name,
+    file: file || `src/pages/${name}.tsx`,
+    events,
+  };
+};
+
 export const normalizeReportPayload = (
   parsed: Record<string, unknown>,
 ): Record<string, unknown> => {
+  const pages = Array.isArray(parsed.pages)
+    ? parsed.pages.map(normalizePage).filter((page): page is Record<string, unknown> => page !== null)
+    : [];
+  const newEvents = Array.isArray(parsed.newEvents)
+    ? parsed.newEvents.filter((event): event is string => typeof event === "string")
+    : pages.flatMap((page) =>
+        Array.isArray(page.events)
+          ? page.events
+              .map((event) => (event as Record<string, unknown>).name)
+              .filter((event): event is string => typeof event === "string")
+          : [],
+      );
+  const filesChanged = Array.isArray(parsed.filesChanged)
+    ? parsed.filesChanged.filter((file): file is string => typeof file === "string")
+    : pages.map((page) => page.file).filter((file): file is string => typeof file === "string");
+
   return {
     version: "1",
     prSummary: typeof parsed.prSummary === "string" ? parsed.prSummary : "",
-    pages: Array.isArray(parsed.pages) ? parsed.pages : [],
-    newEvents: Array.isArray(parsed.newEvents) ? parsed.newEvents : [],
-    filesChanged: Array.isArray(parsed.filesChanged) ? parsed.filesChanged : [],
-    helpersUsed: Array.isArray(parsed.helpersUsed) ? parsed.helpersUsed : [],
-    helpersCreated: Array.isArray(parsed.helpersCreated) ? parsed.helpersCreated : [],
+    pages,
+    newEvents: [...new Set(newEvents)],
+    filesChanged: [...new Set(filesChanged)],
+    helpersUsed: Array.isArray(parsed.helpersUsed)
+      ? parsed.helpersUsed.filter((helper): helper is string => typeof helper === "string")
+      : [],
+    helpersCreated: Array.isArray(parsed.helpersCreated)
+      ? parsed.helpersCreated.filter((helper): helper is string => typeof helper === "string")
+      : [],
     deduplicationDecisions: Array.isArray(parsed.deduplicationDecisions)
       ? parsed.deduplicationDecisions
       : [],

@@ -54,20 +54,22 @@ Instrument posts **inline PR review comments** on each `line` with the justifica
 {
   "version": "1",
   "prSummary": "...",
-  "pages": [...],
+  "pages": [
+    {
+      "name": "CheckoutRetryPage",
+      "file": "src/pages/CheckoutRetryPage.tsx",
+      "events": [...]
+    }
+  ],
   "newEvents": [...],
   "filesChanged": [...],
   "helpersUsed": ["trackPageView", "trackAction"],
   "helpersCreated": [],
-  "deduplicationDecisions": [
-    {
-      "choice": "reuse",
-      "helper": "trackPageView",
-      "reason": "Page mount matches existing helper; avoids duplicate useEffect+track block"
-    }
-  ]
+  "deduplicationDecisions": [...]
 }
 ```
+
+Each page must include `name`, `file`, and `events`. If you omit `name`, it will be derived from `file` — but always include both when possible.
 
 ## CheckoutRetryPage scenario
 

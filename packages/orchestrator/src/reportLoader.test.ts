@@ -22,6 +22,30 @@ describe("packages/orchestrator/src/reportLoader.ts", () => {
     assert.deepEqual(parsed.report?.helpersUsed, []);
   });
 
+  test("given pages without name this should derive name from file path", () => {
+    const normalized = normalizeReportPayload({
+      prSummary: "Added tracking",
+      pages: [
+        {
+          file: "src/pages/CheckoutRetryPage.tsx",
+          events: [
+            {
+              name: "checkout_retry_viewed",
+              properties: { page: "checkout_retry" },
+              trigger: "trackPageView on mount",
+            },
+          ],
+        },
+      ],
+    });
+
+    const parsed = parseInstrumentReportJson(JSON.stringify(normalized));
+
+    assert.ok(parsed.report);
+    assert.equal(parsed.report?.pages[0]?.name, "CheckoutRetryPage");
+    assert.deepEqual(parsed.report?.newEvents, ["checkout_retry_viewed"]);
+  });
+
   test("given report in markdown fence this should extract from agent result", () => {
     const text = `
 Done. Here is the report:
