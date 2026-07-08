@@ -243,7 +243,7 @@ export const renderCommentBody = (
   }
 
   lines.push(
-    "- **Review Agent** — Cursor SDK standards review against ADR-031",
+    "- **Review Agent** — checks instrumentation against org analytics standards (independent from the Code Agent)",
     "- **Dashboard Agent** — Cursor SDK Mixpanel report planning",
     "",
   );

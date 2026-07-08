@@ -20,7 +20,16 @@ describe("packages/orchestrator/src/phaseDescriptions.ts", () => {
     const description = getPhaseDescription("standards-review/attempt-2");
 
     assert.equal(description.title, "Standards review");
-    assert.match(description.subtitle, /attempt 2/);
+    assert.match(description.subtitle, /Review attempt 2/);
+    assert.match(description.subtitle, /analytics standards/);
+  });
+
+  test("given a code agent resume sub-phase this should describe the fix round", () => {
+    const description = getPhaseDescription("code-agent/resume-1");
+
+    assert.equal(description.title, "Code Agent fix");
+    assert.match(description.subtitle, /Fix round 1/);
+    assert.match(description.subtitle, /Review Agent feedback/);
   });
 
   test("given an unknown phase this should return a safe fallback description", () => {
@@ -31,12 +40,11 @@ describe("packages/orchestrator/src/phaseDescriptions.ts", () => {
   });
 
   test("given a phase description this should format a GitHub Actions step name", () => {
-    const stepName = formatGhaStepName(PHASE_DESCRIPTIONS["code-agent"]);
+    const stepName = formatGhaStepName(PHASE_DESCRIPTIONS["standards-review"]);
 
-    assert.equal(
-      stepName,
-      "Code Agent: Cursor Cloud Agent adds instrumentation and commits to the PR branch.",
-    );
+    assert.match(stepName, /^Standards review:/);
+    assert.match(stepName, /separate Review Agent/);
+    assert.match(stepName, /up to 2 fix rounds/);
   });
 
   test("given a phase this should format markdown for the GitHub step summary", () => {

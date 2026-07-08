@@ -152,6 +152,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_ENV"
 
+      # Pipeline step subtitles: keep in sync with packages/orchestrator/src/phaseDescriptions.ts
       - name: "Pre-scan: Scan changed page files for missing analytics events (deterministic, no AI)"
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -185,11 +186,19 @@ jobs:
           git fetch "https://x-access-token:${GITHUB_TOKEN}@github.com/${HEAD_REPO}.git" "${HEAD_REF}"
           git reset --hard FETCH_HEAD
 
-      - name: "Standards review: Review Agent validates against ADR-031 with up to 2 auto-fix retries"
+      - name: "Standards review: A separate Review Agent reads the instrumentation and checks it against your org analytics standards. If checks fail, Instrument sends fix instructions to the Code Agent and re-runs the review (up to 2 fix rounds, 3 reviews total)."
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          {
+            echo "### Standards review"
+            echo "_1. Review Agent reads the changed files and \`.instrument/report.json\`_"
+            echo "_2. Checks naming, helper usage, and other rules in \`.cursor/rules/analytics-standards.mdc\`_"
+            echo "_3. On failure: Code Agent receives fix instructions, commits updates, then review runs again_"
+            echo "_4. Stops after 3 review attempts (initial check + up to 2 fix rounds)_"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
           cd .instrument/tooling
           mapfile -t ARGS <<< "$COMMON_ARGS"
           npm run instrument -- review "${ARGS[@]}"

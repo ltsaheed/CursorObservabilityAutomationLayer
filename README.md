@@ -118,14 +118,14 @@ Instrument orchestrates **three Cursor agents** via the Cursor SDK:
 | Agent | Runtime | Role |
 | --- | --- | --- |
 | **Code Agent** | Cursor Cloud Agent on the PR | Adds instrumentation, commits to the branch, writes `.instrument/report.json` |
-| **Review Agent** | Cursor SDK (`Agent.prompt`) | Validates against ADR-031; `Agent.resume` sends fixes back to the Cloud Agent |
+| **Review Agent** | Cursor SDK (`Agent.prompt`) | Independently checks instrumentation against org analytics standards; on failure, sends fix instructions back to the Code Agent (up to 2 fix rounds) |
 | **Dashboard Agent** | Cursor SDK (`Agent.prompt`) | Plans Mixpanel insights/funnel reports from new events |
 
 With `CURSOR_API_KEY` set, the Code Agent runs in Cursor Cloud against the PR (`Agent.create` + `prUrl`). GitHub Actions orchestrates the pipeline and posts PR comments; the **code changes come from the Cursor Cloud Agent**.
 
 1. **Pre-scan** — detect missing tracking in changed page files
 2. **Code Agent** — Cursor Cloud Agent adds instrumentation and writes `.instrument/report.json`
-3. **Standards review** — Cursor Review Agent validates against ADR-031; on failure, `Agent.resume` fixes the Cloud Agent (max 2 retries)
+3. **Standards review** — a separate Review Agent checks the instrumentation against your org analytics standards (`.cursor/rules/analytics-standards.mdc`). If it fails, Instrument sends fix instructions to the Code Agent and re-runs the review (up to 2 fix rounds, 3 reviews total).
 4. **Dashboard agent** — plans Mixpanel insights/funnel reports (only if standards review passes)
 5. **Mixpanel deploy** — creates dashboard bookmarks via service account API
 6. **GitHub comment** — sticky PR comment with decisions, review result, and Mixpanel links

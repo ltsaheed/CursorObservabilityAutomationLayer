@@ -16,7 +16,8 @@ export const PHASE_DESCRIPTIONS: Record<IProgressPhase, IPhaseDescription> = {
   },
   "standards-review": {
     title: "Standards review",
-    subtitle: "Review Agent validates changes against ADR-031 and triggers auto-fix retries.",
+    subtitle:
+      "A separate Review Agent reads the instrumentation and checks it against your org analytics standards. If checks fail, Instrument sends fix instructions to the Code Agent and re-runs the review (up to 2 fix rounds, 3 reviews total).",
   },
   "dashboard-agent": {
     title: "Dashboard agent",
@@ -89,11 +90,31 @@ export const getPhaseDescription = (phase: IProgressSubPhase): IPhaseDescription
     return baseDescription;
   }
 
-  const suffix = suffixParts.join(" ").replace(/-/g, " ");
+  const suffix = suffixParts.join("/");
+
+  if (basePhase === "standards-review" && suffix.startsWith("attempt-")) {
+    const attempt = suffix.replace("attempt-", "");
+
+    return {
+      title: baseDescription.title,
+      subtitle: `Review attempt ${attempt}: check instrumentation against analytics standards.`,
+    };
+  }
+
+  if (basePhase === "code-agent" && suffix.startsWith("resume-")) {
+    const round = suffix.replace("resume-", "");
+
+    return {
+      title: "Code Agent fix",
+      subtitle: `Fix round ${round}: Code Agent applies Review Agent feedback, updates the report, and pushes to the PR branch.`,
+    };
+  }
+
+  const readableSuffix = suffix.replace(/-/g, " ");
 
   return {
     title: baseDescription.title,
-    subtitle: `${baseDescription.subtitle} (${suffix})`,
+    subtitle: `${baseDescription.subtitle} (${readableSuffix})`,
   };
 };
 
