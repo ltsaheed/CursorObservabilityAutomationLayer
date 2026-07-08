@@ -89,8 +89,8 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     assert.equal(requests[0]?.body.dashboard_id, 99);
     assert.equal(requests[0]?.body.type, "insights");
     assert.equal(requests[0]?.body.v, 2);
-    assert.equal(typeof requests[0]?.body.params, "string");
-    assert.deepEqual(JSON.parse(String(requests[0]?.body.params)), { series: [] });
+    assert.equal(typeof requests[0]?.body.params, "object");
+    assert.deepEqual(requests[0]?.body.params, { series: [] });
   });
 
   test("given an API error this should throw MixpanelAppApiError", async () => {
@@ -116,13 +116,26 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
   });
 
   test("given a dashboard plan this should create dashboard and bookmarks", async () => {
-    const requests: string[] = [];
+    const requests: Array<{ method: string; url: string }> = [];
     const config: IMixpanelClientConfig = {
       ...baseConfig,
-      fetchImpl: createMockFetch((url) => {
-        requests.push(url);
+      fetchImpl: createMockFetch((url, init) => {
+        requests.push({
+          method: init?.method ?? "GET",
+          url,
+        });
 
-        if (url.includes("/dashboards")) {
+        if (init?.method === "POST" && /\/dashboards$/.test(url)) {
+          return new Response(
+            JSON.stringify({
+              status: "ok",
+              results: { id: 500, title: "Instrument Reports" },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        if (init?.method === "PATCH" && /\/dashboards\/500$/.test(url)) {
           return new Response(
             JSON.stringify({
               status: "ok",
@@ -136,7 +149,7 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
           JSON.stringify({
             status: "ok",
             results: {
-              id: requests.filter((entry) => entry.includes("/bookmarks")).length,
+              id: requests.filter((entry) => entry.url.includes("/bookmarks")).length,
               name: "Report",
               type: "insights",
             },
@@ -172,16 +185,35 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     assert.equal(result.reports.length, 2);
     assert.match(result.dashboardUrl, /#id=500$/);
     assert.match(result.reports[0]?.reportUrl, /report-1/);
-    assert.equal(requests.filter((entry) => entry.includes("/bookmarks")).length, 2);
+    assert.equal(requests.filter((entry) => entry.url.includes("/bookmarks")).length, 2);
+    assert.equal(
+      requests.filter(
+        (entry) => entry.method === "PATCH" && entry.url.includes("/dashboards/500"),
+      ).length,
+      2,
+    );
   });
 
   test("given an existing dashboard id this should skip dashboard creation", async () => {
-    const requests: string[] = [];
+    const requests: Array<{ method: string; url: string }> = [];
     const config: IMixpanelClientConfig = {
       ...baseConfig,
       dashboardId: "777",
-      fetchImpl: createMockFetch((url) => {
-        requests.push(url);
+      fetchImpl: createMockFetch((url, init) => {
+        requests.push({
+          method: init?.method ?? "GET",
+          url,
+        });
+
+        if (init?.method === "PATCH" && /\/dashboards\/777$/.test(url)) {
+          return new Response(
+            JSON.stringify({
+              status: "ok",
+              results: { id: 777, title: "Instrument Reports" },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
 
         return new Response(
           JSON.stringify({
@@ -209,6 +241,9 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
 
     assert.equal(result.createdDashboard, false);
     assert.equal(result.dashboardId, 777);
-    assert.equal(requests.some((entry) => entry.includes("/dashboards")), false);
+    assert.equal(
+      requests.some((entry) => entry.method === "POST" && /\/dashboards$/.test(entry.url)),
+      false,
+    );
   });
 });

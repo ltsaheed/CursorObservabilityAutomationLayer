@@ -22,9 +22,11 @@ describe("packages/mixpanelClient/src/bookmarkParams.ts", () => {
     const sections = params.sections as Record<string, unknown>;
     const show = sections.show as Array<Record<string, unknown>>;
     const behavior = show[0]?.behavior as Record<string, unknown>;
+    const time = sections.time as Array<Record<string, unknown>>;
 
-    assert.equal(behavior.name, "checkout_retry_viewed");
-    assert.equal(Array.isArray(sections.time), true);
+    assert.deepEqual(behavior.value, { name: "checkout_retry_viewed" });
+    assert.equal(time[0]?.dateRangeType, "in the last");
+    assert.equal(time[0]?.value, 30);
     assert.deepEqual(params.displayOptions, {
       chartType: "line",
       analysis: "linear",
@@ -45,10 +47,11 @@ describe("packages/mixpanelClient/src/bookmarkParams.ts", () => {
     const show = sections.show as Array<Record<string, unknown>>;
     const behavior = show[0]?.behavior as Record<string, unknown>;
     const behaviors = behavior.behaviors as Array<Record<string, unknown>>;
+    const measurement = show[0]?.measurement as Record<string, unknown>;
 
     assert.equal(behavior.type, "funnel");
     assert.equal(behaviors.length, 2);
-    assert.equal(behaviors[0]?.name, "checkout_started");
+    assert.equal(measurement.math, "conversion_rate_unique");
   });
 
   test("given report plan type this should delegate to the matching builder", () => {

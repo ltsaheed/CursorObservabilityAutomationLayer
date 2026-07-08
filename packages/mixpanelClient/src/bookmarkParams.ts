@@ -7,9 +7,9 @@ export const buildRelativeTimeSection = (
   unit = "day",
 ): Array<Record<string, unknown>> => [
   {
-    dateRangeType: "in the last",
     unit,
-    window: { unit: "day", value: lastDays },
+    dateRangeType: "in the last",
+    value: lastDays,
   },
 ];
 
@@ -32,13 +32,10 @@ export const buildInsightsBookmarkParams = (
     sections: {
       show: [
         {
-          type: "metric",
           behavior: {
             type: "event",
-            name: plan.event,
             resourceType: "events",
-            filtersDeterminer: "all",
-            filters: [],
+            value: { name: plan.event },
           },
           measurement: {
             math: "total",
@@ -77,7 +74,7 @@ export const buildFunnelsBookmarkParams = (
             type: "funnel",
             resourceType: "events",
             behaviors,
-            conversionWindowDuration: 7,
+            conversionWindowDuration: 14,
             conversionWindowUnit: "day",
             funnelOrder: "loose",
             exclusions: [],
@@ -85,7 +82,7 @@ export const buildFunnelsBookmarkParams = (
             filter: [],
           },
           measurement: {
-            math: "conversion_rate",
+            math: "conversion_rate_unique",
             property: null,
             stepIndex: null,
           },

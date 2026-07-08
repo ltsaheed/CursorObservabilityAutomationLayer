@@ -18,6 +18,7 @@ export class MixpanelAppApiError extends Error {
 
 export interface IMixpanelHttpClient {
   post<T>(path: string, body: Record<string, unknown>): Promise<T>;
+  patch<T>(path: string, body: Record<string, unknown>): Promise<T>;
 }
 
 const resolveApiPath = (
@@ -62,6 +63,23 @@ const unwrapResults = <T>(payload: unknown): T => {
   return payload as T;
 };
 
+const extractApiErrorMessage = (responseBody: unknown, status: number): string => {
+  if (
+    typeof responseBody === "object" &&
+    responseBody !== null &&
+    "error" in responseBody &&
+    typeof (responseBody as { error?: string }).error === "string"
+  ) {
+    return (responseBody as { error: string }).error;
+  }
+
+  if (typeof responseBody === "string" && responseBody) {
+    return responseBody;
+  }
+
+  return `Mixpanel App API request failed with status ${status}`;
+};
+
 export const createMixpanelHttpClient = (
   config: IMixpanelClientConfig,
 ): IMixpanelHttpClient => {
@@ -74,13 +92,14 @@ export const createMixpanelHttpClient = (
     config.serviceAccountSecret,
   );
 
-  const post = async <T>(
+  const request = async <T>(
+    method: "POST" | "PATCH",
     path: string,
     body: Record<string, unknown>,
   ): Promise<T> => {
     const url = new URL(path.replace(/^\//, ""), baseUrl).toString();
     const response = await fetchImpl(url, {
-      method: "POST",
+      method,
       headers: {
         Authorization: authHeader,
         Accept: "application/json",
@@ -91,19 +110,11 @@ export const createMixpanelHttpClient = (
     const responseBody = await parseJsonBody(response);
 
     if (!response.ok) {
-      const apiError =
-        typeof responseBody === "object" &&
-        responseBody !== null &&
-        "error" in responseBody &&
-        typeof (responseBody as { error?: string }).error === "string"
-          ? (responseBody as { error: string }).error
-          : typeof responseBody === "string" && responseBody
-            ? responseBody
-            : `Mixpanel App API request failed with status ${response.status}`;
+      const apiError = extractApiErrorMessage(responseBody, response.status);
       const message =
         response.status === 404
-          ? `${apiError} (POST ${url}). Check MIXPANEL_PROJECT_ID, MIXPANEL_WORKSPACE_ID, MIXPANEL_DASHBOARD_ID (if set), and MIXPANEL_REGION (use us for mixpanel.com projects). The workspace ID is the number after /view/ in your Mixpanel URL. Confirm the service account can access that workspace.`
-          : apiError;
+          ? `${apiError} (${method} ${url}). Check MIXPANEL_PROJECT_ID, MIXPANEL_WORKSPACE_ID, MIXPANEL_DASHBOARD_ID (if set), and MIXPANEL_REGION (use us for mixpanel.com projects). Confirm the service account can access that workspace.`
+          : `${apiError} (${method} ${url})`;
 
       throw new MixpanelAppApiError(message, response.status, responseBody);
     }
@@ -112,7 +123,10 @@ export const createMixpanelHttpClient = (
   };
 
   return {
-    post,
+    post: <T>(path: string, body: Record<string, unknown>) =>
+      request<T>("POST", path, body),
+    patch: <T>(path: string, body: Record<string, unknown>) =>
+      request<T>("PATCH", path, body),
   };
 };
 
@@ -129,4 +143,15 @@ export const getCreateBookmarkPath = (config: IMixpanelClientConfig): string => 
     config.apiPaths?.createBookmarkPath ?? "workspaces/{workspaceId}/bookmarks";
 
   return resolveApiPath(template, config.projectId, config.workspaceId);
+};
+
+export const getDashboardPath = (
+  config: IMixpanelClientConfig,
+  dashboardId: number,
+): string => {
+  return resolveApiPath(
+    `workspaces/{workspaceId}/dashboards/${dashboardId}`,
+    config.projectId,
+    config.workspaceId,
+  );
 };

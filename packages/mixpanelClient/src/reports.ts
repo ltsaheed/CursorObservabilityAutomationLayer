@@ -3,6 +3,7 @@ import {
   createMixpanelHttpClient,
   getCreateBookmarkPath,
   getCreateDashboardPath,
+  getDashboardPath,
 } from "./client.js";
 import { resolveMixpanelRegion } from "./endpoints.js";
 import type {
@@ -53,7 +54,7 @@ export const createBookmark = async (
   const body: Record<string, unknown> = {
     name: params.name,
     type: params.bookmarkType,
-    params: JSON.stringify(params.params),
+    params: params.params,
     dashboard_id: params.dashboardId,
     v: 2,
   };
@@ -65,6 +66,25 @@ export const createBookmark = async (
   const bookmark = await client.post<IMixpanelBookmark>(path, body);
 
   return bookmark;
+};
+
+export const addReportToDashboard = async (
+  config: IMixpanelClientConfig,
+  dashboardId: number,
+  bookmarkId: number,
+): Promise<void> => {
+  const client = createMixpanelHttpClient(config);
+  const path = getDashboardPath(config, dashboardId);
+
+  await client.patch(path, {
+    content: {
+      action: "create",
+      content_type: "report",
+      content_params: {
+        source_bookmark_id: bookmarkId,
+      },
+    },
+  });
 };
 
 export const deployDashboardPlan = async (
@@ -125,6 +145,8 @@ export const deployDashboardPlan = async (
       dashboardId,
       params: buildBookmarkParams(reportPlan),
     });
+
+    await addReportToDashboard(config, dashboardId, bookmark.id);
 
     reports.push({
       plan: reportPlan,
