@@ -1,11 +1,77 @@
 #!/usr/bin/env node
 
 import { config as loadDotenv } from "dotenv";
-import { Command } from "commander";
+import { Command, type Command as CommandType } from "commander";
 import { resolve } from "node:path";
 
-import { runPipeline } from "./runPipeline.js";
+import { runPipelinePhase, runFullPipeline } from "./pipelineCommands.js";
+import type { IPipelinePhaseName } from "./pipelineCommands.js";
 import { runOptionsSchema } from "./types.js";
+
+const loadEnvForWorkspace = (workspaceRoot: string): void => {
+  loadDotenv({ path: resolve(workspaceRoot, ".env") });
+  loadDotenv({ path: resolve(workspaceRoot, "../.env") });
+};
+
+const resolveConfigPath = (workspaceRoot: string, config: string): string =>
+  config.startsWith("/") ? resolve(config) : resolve(workspaceRoot, config);
+
+const parseRunOptions = (flags: {
+  config: string;
+  workspaceRoot: string;
+  repo?: string;
+  prNumber?: number;
+  prUrl?: string;
+  dryRun?: boolean;
+  reportsOnly?: boolean;
+  skipCodeAgent?: boolean;
+  changedFiles?: string[];
+}) => {
+  const workspaceRoot = resolve(flags.workspaceRoot);
+  loadEnvForWorkspace(workspaceRoot);
+
+  return runOptionsSchema.parse({
+    config: resolveConfigPath(workspaceRoot, flags.config),
+    repo: flags.repo,
+    prNumber: flags.prNumber,
+    prUrl: flags.prUrl,
+    workspaceRoot,
+    dryRun: flags.dryRun ?? false,
+    reportsOnly: flags.reportsOnly ?? false,
+    skipCodeAgent: flags.skipCodeAgent ?? false,
+    changedFiles: flags.changedFiles,
+  });
+};
+
+const addSharedRunOptions = (command: CommandType): CommandType =>
+  command
+    .requiredOption("--config <path>", "Path to instrument.config.json")
+    .option("--repo <slug>", "GitHub repo slug, e.g. owner/repo")
+    .option("--pr-number <number>", "Pull request number", (value) => Number(value))
+    .option("--pr-url <url>", "Pull request URL for cloud code agent")
+    .option("--workspace-root <path>", "Workspace root", process.cwd())
+    .option("--dry-run", "Simulate agents and Mixpanel deploy", false)
+    .option("--reports-only", "Skip Mixpanel deployment", false)
+    .option("--skip-code-agent", "Skip code instrumentation agent", false)
+    .option("--changed-files <files...>", "Changed files relative to workspace root");
+
+const addPhaseCommand = (
+  program: CommandType,
+  name: IPipelinePhaseName,
+  description: string,
+): void => {
+  addSharedRunOptions(
+    program
+      .command(name)
+      .description(description)
+      .action(async (flags) => {
+        const options = parseRunOptions(flags);
+        const result = await runPipelinePhase(name, options);
+
+        console.log(JSON.stringify(result, null, 2));
+      }),
+  );
+};
 
 const program = new Command();
 
@@ -14,43 +80,32 @@ program
   .description("Orchestrate the Instrument PR analytics pipeline")
   .version("0.1.0");
 
-program
-  .command("run")
-  .description("Run the full Instrument pipeline for a pull request")
-  .requiredOption("--config <path>", "Path to instrument.config.json")
-  .option("--repo <slug>", "GitHub repo slug, e.g. owner/repo")
-  .option("--pr-number <number>", "Pull request number", (value) => Number(value))
-  .option("--pr-url <url>", "Pull request URL for cloud code agent")
-  .option("--workspace-root <path>", "Workspace root", process.cwd())
-  .option("--dry-run", "Simulate agents and Mixpanel deploy", false)
-  .option("--reports-only", "Skip Mixpanel deployment", false)
-  .option("--skip-code-agent", "Skip code instrumentation agent", false)
-  .option("--changed-files <files...>", "Changed files relative to workspace root")
-  .action(async (flags) => {
-    const workspaceRoot = resolve(flags.workspaceRoot);
-    loadDotenv({ path: resolve(workspaceRoot, ".env") });
-    loadDotenv({ path: resolve(workspaceRoot, "../.env") });
+addSharedRunOptions(
+  program
+    .command("run")
+    .description("Run the full Instrument pipeline for a pull request")
+    .action(async (flags) => {
+      const options = parseRunOptions(flags);
+      const result = await runFullPipeline(options);
 
-    const configPath = flags.config.startsWith("/")
-      ? resolve(flags.config)
-      : resolve(workspaceRoot, flags.config);
+      console.log(JSON.stringify(result, null, 2));
+    }),
+);
 
-    const options = runOptionsSchema.parse({
-      config: configPath,
-      repo: flags.repo,
-      prNumber: flags.prNumber,
-      prUrl: flags.prUrl,
-      workspaceRoot,
-      dryRun: flags.dryRun,
-      reportsOnly: flags.reportsOnly,
-      skipCodeAgent: flags.skipCodeAgent,
-      changedFiles: flags.changedFiles,
-    });
-
-    const result = await runPipeline(options);
-
-    console.log(JSON.stringify(result, null, 2));
-  });
+addPhaseCommand(program, "pre-scan", "Detect analytics gaps in changed files");
+addPhaseCommand(
+  program,
+  "code-agent",
+  "Run the Cursor Cloud Agent to add instrumentation",
+);
+addPhaseCommand(
+  program,
+  "review",
+  "Run standards review loop (Review Agent + Code Agent resume)",
+);
+addPhaseCommand(program, "dashboard", "Plan Mixpanel dashboard reports");
+addPhaseCommand(program, "deploy", "Deploy dashboard bookmarks to Mixpanel");
+addPhaseCommand(program, "comment", "Sync sticky PR comment and inline review comments");
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   const message = error instanceof Error ? error.message : "Instrument CLI failed";

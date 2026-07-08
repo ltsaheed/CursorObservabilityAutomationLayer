@@ -1,5 +1,6 @@
-import type { IProgressReporterState } from "./types.js";
+import type { IProgressReporterState, IProgressPhaseState } from "./types.js";
 import type { IRunHistoryEntry } from "./types.js";
+import { formatPhaseDuration, resolvePhaseAgentLabel } from "./phaseUtils.js";
 import { buildMixpanelSectionForComment } from "./reviewComments.js";
 
 export const BOT_MARKER = "<!-- instrument-bot -->";
@@ -152,6 +153,58 @@ export const serializeRunHistory = (history: IRunHistoryEntry[]): string => {
   return `${RUN_HISTORY_MARKER_PREFIX}${JSON.stringify(history)} -->`;
 };
 
+const renderPhaseDetails = (phase: IProgressPhaseState): string[] => {
+  const lines: string[] = [];
+
+  if (phase.decisions.length === 0 && phase.logs.length === 0 && phase.streamSnippets.length === 0) {
+    return lines;
+  }
+
+  lines.push(`<details><summary>${phase.name} details</summary>`, "");
+
+  for (const decision of phase.decisions) {
+    lines.push(`- **${decision.label}**: ${decision.detail}`);
+  }
+
+  for (const log of phase.logs.slice(-5)) {
+    lines.push(`- _${log.level}_ (${log.timestamp}): ${log.message}`);
+  }
+
+  if (phase.streamSnippets.length > 0) {
+    lines.push("", "**Agent stream**");
+
+    for (const snippet of phase.streamSnippets) {
+      lines.push(`- \`${snippet.text}\``);
+    }
+  }
+
+  lines.push("", "</details>", "");
+
+  return lines;
+};
+
+export const renderPhaseTimeline = (state: IProgressReporterState): string[] => {
+  const lines = [
+    "### Run timeline",
+    "| Phase | Status | Duration | Agent / Run ID |",
+    "| --- | --- | --- | --- |",
+  ];
+
+  for (const phase of state.phases) {
+    lines.push(
+      `| ${phase.name} | ${phaseStatusEmoji(phase.status)} ${phase.status} | ${formatPhaseDuration(phase)} | ${resolvePhaseAgentLabel(phase.name, state.codeAgentId)} |`,
+    );
+  }
+
+  lines.push("");
+
+  for (const phase of state.phases) {
+    lines.push(...renderPhaseDetails(phase));
+  }
+
+  return lines;
+};
+
 export const renderCommentBody = (
   state: IProgressReporterState,
   mixpanel?: { projectId?: string; workspaceId?: string },
@@ -206,19 +259,7 @@ export const renderCommentBody = (
     }
   }
 
-  lines.push("### Pipeline phases");
-
-  for (const phase of state.phases) {
-    lines.push(
-      `- ${phaseStatusEmoji(phase.status)} **${phase.name}** (${phase.status})`,
-    );
-
-    for (const decision of phase.decisions) {
-      lines.push(`  - ${decision.label}: ${decision.detail}`);
-    }
-  }
-
-  lines.push("");
+  lines.push(...renderPhaseTimeline(state));
 
   if (state.report) {
     lines.push("### Instrumentation summary", state.report.prSummary, "");

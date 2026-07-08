@@ -31,36 +31,55 @@ export interface IStandardsReviewLoopOptions {
   github?: IGitHubCommentContext;
 }
 
-const MAX_REVIEW_RETRIES = 2;
+export const MAX_REVIEW_RETRIES = 2;
 
-const buildFixPrompt = (issues: IStandardsReviewResult["issues"]): string => {
+export const buildFixPrompt = (issues: IStandardsReviewResult["issues"]): string => {
   return `The Review Agent found standards violations. Fix every issue, re-run tests, update ${REPORT_RELATIVE_PATH}, commit and push.\n\n${JSON.stringify(issues, null, 2)}\n\nFollow ADR-031 in .cursor/rules/analytics-standards.mdc.`;
 };
 
 const resumeCodeAgentFix = async (
   codeAgentId: string,
   issues: IStandardsReviewResult["issues"],
+  attempt: number,
   reporter: IProgressReporter,
 ): Promise<void> => {
   const apiKey = process.env.CURSOR_API_KEY;
+  const resumePhase = `code-agent/resume-${attempt + 1}` as const;
+  const fixPrompt = buildFixPrompt(issues);
 
   if (!apiKey) {
     throw new Error("CURSOR_API_KEY required to resume code agent");
   }
 
-  reporter.log("standards-review", `Resuming code agent ${codeAgentId} to fix issues`);
+  reporter.phaseStart(resumePhase);
+  reporter.decision(resumePhase, "Resume target", `\`${codeAgentId}\``);
+  reporter.decision(
+    resumePhase,
+    "Fix prompt",
+    fixPrompt.length > 500 ? `${fixPrompt.slice(0, 497)}...` : fixPrompt,
+  );
+  reporter.log(resumePhase, `Resuming code agent ${codeAgentId} to fix issues`);
 
-  await using agent = await Agent.resume(codeAgentId, { apiKey });
-  const run = await agent.send(buildFixPrompt(issues));
+  try {
+    await using agent = await Agent.resume(codeAgentId, { apiKey });
+    const run = await agent.send(fixPrompt);
+    reporter.log(resumePhase, `Started fix run ${run.id}`);
 
-  for await (const event of run.stream()) {
-    reporter.streamEvent("standards-review", event);
-  }
+    for await (const event of run.stream()) {
+      reporter.streamEvent(resumePhase, event);
+    }
 
-  const result = await run.wait();
+    const result = await run.wait();
 
-  if (result.status === "error") {
-    throw new Error(`Code agent fix run failed: ${result.id}`);
+    if (result.status === "error") {
+      reporter.phaseComplete(resumePhase, "failed");
+      throw new Error(`Code agent fix run failed: ${result.id}`);
+    }
+
+    reporter.phaseComplete(resumePhase, "complete");
+  } catch (error) {
+    reporter.phaseComplete(resumePhase, "failed");
+    throw error;
   }
 };
 
@@ -73,10 +92,12 @@ export const runStandardsReviewLoop = async (
   reporter.phaseStart("standards-review");
 
   for (let attempt = 0; attempt <= MAX_REVIEW_RETRIES; attempt++) {
+    const attemptPhase = `standards-review/attempt-${attempt + 1}` as const;
     const simulateFail = dryRun && attempt === 0;
 
+    reporter.phaseStart(attemptPhase);
     reporter.decision(
-      "standards-review",
+      attemptPhase,
       "Review attempt",
       `${attempt + 1} of ${MAX_REVIEW_RETRIES + 1}`,
     );
@@ -88,9 +109,12 @@ export const runStandardsReviewLoop = async (
       dryRun,
       reporter,
       simulateFail,
+      phase: attemptPhase,
     });
 
     if (review.passed) {
+      reporter.decision(attemptPhase, "Result", review.summary);
+      reporter.phaseComplete(attemptPhase, "complete");
       reporter.decision("standards-review", "Passed", review.summary);
       reporter.phaseComplete("standards-review", "complete");
       reporter.appendSummaryLine(
@@ -99,6 +123,13 @@ export const runStandardsReviewLoop = async (
 
       return { report: currentReport, review };
     }
+
+    reporter.decision(
+      attemptPhase,
+      "Result",
+      `${review.issues.length} issue(s): ${review.summary}`,
+    );
+    reporter.phaseComplete(attemptPhase, "failed");
 
     if (attempt === MAX_REVIEW_RETRIES) {
       reporter.decision("standards-review", "Failed", review.summary);
@@ -112,7 +143,7 @@ export const runStandardsReviewLoop = async (
     reporter.decision(
       "standards-review",
       "Fix required",
-      `${review.issues.length} issue(s) — resuming Code Agent`,
+      `${review.issues.length} issue(s) — resuming Code Agent (attempt ${attempt + 1})`,
     );
 
     if (dryRun) {
@@ -129,7 +160,7 @@ export const runStandardsReviewLoop = async (
     }
 
     try {
-      await resumeCodeAgentFix(codeAgentId, review.issues, reporter);
+      await resumeCodeAgentFix(codeAgentId, review.issues, attempt, reporter);
     } catch (error) {
       const message = error instanceof CursorAgentError
         ? error.message

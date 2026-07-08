@@ -77,6 +77,9 @@ jobs:
           cache: npm
           cache-dependency-path: .instrument/tooling/package-lock.json
 
+      - name: Install ripgrep for Cursor SDK local agents
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
+
       - name: Install and build tooling
         working-directory: .instrument/tooling
         run: npm ci && npm run build
@@ -114,42 +117,107 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Run Instrument pipeline
-        env:
-          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
-          GITHUB_TOKEN: ${{ github.token }}
-          MIXPANEL_SERVICE_ACCOUNT_USERNAME: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME }}
-          MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
-          MIXPANEL_PROJECT_ID: ${{ secrets.MIXPANEL_PROJECT_ID }}
-          MIXPANEL_WORKSPACE_ID: ${{ secrets.MIXPANEL_WORKSPACE_ID }}
-          MIXPANEL_DASHBOARD_ID: ${{ secrets.MIXPANEL_DASHBOARD_ID }}
+      - name: Configure Instrument CLI
+        id: instrument-cli
         run: |
           WORKSPACE="${{ github.workspace }}/${{ inputs.workspace-root }}"
           CONFIG="${{ inputs.config-path }}"
           if [[ "$CONFIG" != /* ]]; then
             CONFIG="$WORKSPACE/$CONFIG"
           fi
-          ARGS=(
-            run
-            --config "$CONFIG"
-            --workspace-root "$WORKSPACE"
-            --repo "${{ github.repository }}"
-            --pr-number "${{ github.event.pull_request.number }}"
-            --pr-url "${{ github.event.pull_request.html_url }}"
-          )
-          if [ "${{ inputs.dry-run }}" = "true" ]; then
-            ARGS+=(--dry-run)
-          fi
-          if [ "${{ inputs.reports-only }}" = "true" ]; then
-            ARGS+=(--reports-only)
-          fi
-          if [ "${{ inputs.skip-code-agent }}" = "true" ]; then
-            ARGS+=(--skip-code-agent)
-          fi
-          if [ -n "${{ steps.changed.outputs.files }}" ]; then
-            while IFS= read -r file; do
-              [ -n "$file" ] && ARGS+=(--changed-files "$file")
-            done <<< "${{ steps.changed.outputs.files }}"
-          fi
+          {
+            echo "WORKSPACE=$WORKSPACE"
+            echo "CONFIG=$CONFIG"
+            echo "COMMON_ARGS<<EOF"
+            printf '%s\n' \
+              --config "$CONFIG" \
+              --workspace-root "$WORKSPACE" \
+              --repo "${{ github.repository }}" \
+              --pr-number "${{ github.event.pull_request.number }}" \
+              --pr-url "${{ github.event.pull_request.html_url }}"
+            if [ "${{ inputs.dry-run }}" = "true" ]; then
+              printf '%s\n' --dry-run
+            fi
+            if [ "${{ inputs.reports-only }}" = "true" ]; then
+              printf '%s\n' --reports-only
+            fi
+            if [ "${{ inputs.skip-code-agent }}" = "true" ]; then
+              printf '%s\n' --skip-code-agent
+            fi
+            if [ -n "${{ steps.changed.outputs.files }}" ]; then
+              while IFS= read -r file; do
+                [ -n "$file" ] && printf '%s\n' --changed-files "$file"
+              done <<< "${{ steps.changed.outputs.files }}"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Pre-scan
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
           cd .instrument/tooling
-          npm run instrument -- "${ARGS[@]}"
+          mapfile -t ARGS <<< "$COMMON_ARGS"
+          npm run instrument -- pre-scan "${ARGS[@]}"
+
+      - name: Code Agent
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd .instrument/tooling
+          mapfile -t ARGS <<< "$COMMON_ARGS"
+          npm run instrument -- code-agent "${ARGS[@]}"
+
+      - name: Pull Code Agent commits
+        if: ${{ inputs.skip-code-agent != true && inputs.dry-run != true }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git pull --ff-only origin "${{ github.event.pull_request.head.ref }}"
+
+      - name: Standards review
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd .instrument/tooling
+          mapfile -t ARGS <<< "$COMMON_ARGS"
+          npm run instrument -- review "${ARGS[@]}"
+
+      - name: Dashboard agent
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd .instrument/tooling
+          mapfile -t ARGS <<< "$COMMON_ARGS"
+          npm run instrument -- dashboard "${ARGS[@]}"
+
+      - name: Mixpanel deploy
+        env:
+          MIXPANEL_SERVICE_ACCOUNT_USERNAME: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME }}
+          MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
+          MIXPANEL_PROJECT_ID: ${{ secrets.MIXPANEL_PROJECT_ID }}
+          MIXPANEL_WORKSPACE_ID: ${{ secrets.MIXPANEL_WORKSPACE_ID }}
+          MIXPANEL_DASHBOARD_ID: ${{ secrets.MIXPANEL_DASHBOARD_ID }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd .instrument/tooling
+          mapfile -t ARGS <<< "$COMMON_ARGS"
+          npm run instrument -- deploy "${ARGS[@]}"
+
+      - name: Sync PR comment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          cd .instrument/tooling
+          mapfile -t ARGS <<< "$COMMON_ARGS"
+          npm run instrument -- comment "${ARGS[@]}"
+
+      - name: Upload pipeline state artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: instrument-pipeline-state
+          path: ${{ inputs.workspace-root == '.' && '.' || inputs.workspace-root }}/.instrument/state/
+          if-no-files-found: ignore

@@ -55,6 +55,25 @@ describe("packages/orchestrator/src/reviewComments.ts", () => {
     assert.equal(targets[0]?.file, "src/pages/CheckoutRetryPage.tsx");
   });
 
+  test("given no new events this should skip inline review comment targets", () => {
+    const targets = collectReviewCommentTargets({
+      ...sampleReport,
+      newEvents: [],
+      filesChanged: [],
+    });
+
+    assert.equal(targets.length, 0);
+  });
+
+  test("given events outside filesChanged this should skip inline review comment targets", () => {
+    const targets = collectReviewCommentTargets({
+      ...sampleReport,
+      filesChanged: ["src/pages/HomePage.tsx"],
+    });
+
+    assert.equal(targets.length, 0);
+  });
+
   test("given dashboard plan this should resolve planned Mixpanel context", () => {
     const context = resolveEventMixpanelContext(
       "checkout_retry_viewed",

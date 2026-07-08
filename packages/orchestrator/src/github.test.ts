@@ -6,6 +6,7 @@ import {
   computeOverallStatus,
   parseRunHistoryFromComment,
   renderCommentBody,
+  renderPhaseTimeline,
 } from "./github.js";
 import type { IProgressReporterState } from "./types.js";
 
@@ -56,6 +57,38 @@ describe("packages/orchestrator/src/github.ts", () => {
 
     assert.equal(history[0]?.runId, "2");
     assert.equal(history[1]?.runId, "1");
+  });
+
+  test("given phase timeline this should render run timeline table", () => {
+    const lines = renderPhaseTimeline({
+      phases: [
+        {
+          name: "pre-scan",
+          status: "complete",
+          startedAt: "2026-07-08T12:00:00.000Z",
+          completedAt: "2026-07-08T12:00:01.000Z",
+          decisions: [{ label: "Assessment", detail: "1 gap found" }],
+          logs: [],
+          streamSnippets: [],
+        },
+        {
+          name: "code-agent/resume-1",
+          status: "complete",
+          startedAt: "2026-07-08T12:02:00.000Z",
+          completedAt: "2026-07-08T12:02:45.000Z",
+          decisions: [{ label: "Resume target", detail: "`agent-abc`" }],
+          logs: [],
+          streamSnippets: [],
+        },
+      ],
+      summaryLines: [],
+      codeAgentId: "agent-abc",
+    });
+    const body = lines.join("\n");
+
+    assert.match(body, /Run timeline/);
+    assert.match(body, /code-agent\/resume-1/);
+    assert.match(body, /agent-abc/);
   });
 
   test("given run metadata this should render latest run header", () => {

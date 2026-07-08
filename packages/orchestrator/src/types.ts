@@ -231,6 +231,8 @@ export type IProgressPhase =
   | "mixpanel-deploy"
   | "github-comment";
 
+export type IProgressSubPhase = IProgressPhase | `${IProgressPhase}/${string}`;
+
 export interface IProgressDecision {
   label: string;
   detail: string;
@@ -248,7 +250,7 @@ export interface IProgressStreamSnippet {
 }
 
 export interface IProgressPhaseState {
-  name: IProgressPhase;
+  name: IProgressSubPhase;
   status: "running" | "complete" | "skipped" | "failed";
   startedAt: string;
   completedAt?: string;
@@ -286,11 +288,11 @@ export interface IRunHistoryEntry {
 }
 
 export interface IProgressReporter {
-  phaseStart: (phase: IProgressPhase) => void;
-  decision: (phase: IProgressPhase, label: string, detail: string) => void;
-  log: (phase: IProgressPhase, message: string, level?: "info" | "warn" | "error") => void;
-  streamEvent: (phase: IProgressPhase, event: unknown) => void;
-  phaseComplete: (phase: IProgressPhase, status?: "complete" | "skipped" | "failed") => void;
+  phaseStart: (phase: IProgressSubPhase) => void;
+  decision: (phase: IProgressSubPhase, label: string, detail: string) => void;
+  log: (phase: IProgressSubPhase, message: string, level?: "info" | "warn" | "error") => void;
+  streamEvent: (phase: IProgressSubPhase, event: unknown) => void;
+  phaseComplete: (phase: IProgressSubPhase, status?: "complete" | "skipped" | "failed") => void;
   setAssessment: (assessment: ICoverageAssessment) => void;
   setReport: (report: IInstrumentReport) => void;
   setStandardsReview: (review: IStandardsReviewResult) => void;

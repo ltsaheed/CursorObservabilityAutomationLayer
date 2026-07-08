@@ -253,11 +253,21 @@ const createReviewComment = async (
 export const collectReviewCommentTargets = (
   report: IInstrumentReport,
 ): Array<{ file: string; line: number; event: IInstrumentEvent }> => {
+  if (report.newEvents.length === 0 || report.filesChanged.length === 0) {
+    return [];
+  }
+
+  const newEventNames = new Set(report.newEvents);
+  const changedFiles = new Set(report.filesChanged);
   const targets: Array<{ file: string; line: number; event: IInstrumentEvent }> = [];
 
   for (const page of report.pages) {
+    if (!changedFiles.has(page.file)) {
+      continue;
+    }
+
     for (const event of page.events) {
-      if (event.line) {
+      if (event.line && newEventNames.has(event.name)) {
         targets.push({ file: page.file, line: event.line, event });
       }
     }
@@ -271,17 +281,17 @@ export const syncReviewComments = async (options: {
   state: IProgressReporterState;
   mixpanelProjectId?: string;
   mixpanelWorkspaceId?: string;
-}): Promise<number> => {
+}): Promise<{ posted: number; skipped: number }> => {
   const { context, state, mixpanelProjectId, mixpanelWorkspaceId } = options;
 
   if (!state.report) {
-    return 0;
+    return { posted: 0, skipped: 0 };
   }
 
   const targets = collectReviewCommentTargets(state.report);
 
   if (targets.length === 0) {
-    return 0;
+    return { posted: 0, skipped: 0 };
   }
 
   const headSha = await fetchPullRequestHeadSha(context);
@@ -294,6 +304,7 @@ export const syncReviewComments = async (options: {
   }
 
   let posted = 0;
+  let skipped = 0;
 
   for (const target of targets) {
     const mixpanel = resolveEventMixpanelContext(
@@ -305,11 +316,22 @@ export const syncReviewComments = async (options: {
     );
     const body = buildReviewCommentBody(target.event, target.file, mixpanel);
 
-    await createReviewComment(context, { headSha }, target.file, target.line, body);
-    posted += 1;
+    try {
+      await createReviewComment(context, { headSha }, target.file, target.line, body);
+      posted += 1;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Review comment failed";
+
+      if (message.includes("422")) {
+        skipped += 1;
+        continue;
+      }
+
+      throw error;
+    }
   }
 
-  return posted;
+  return { posted, skipped };
 };
 
 export const buildMixpanelSectionForComment = (

@@ -51,6 +51,17 @@ instrument run \
   [--changed-files file1 file2]
 ```
 
+Individual pipeline phases (used by the reusable workflow for visible CI steps; state persists in `.instrument/state/`):
+
+```bash
+instrument pre-scan --config <path> --workspace-root <path> [--changed-files ...]
+instrument code-agent --config <path> --workspace-root <path> --pr-url <url> ...
+instrument review --config <path> --workspace-root <path> ...
+instrument dashboard --config <path> --workspace-root <path> ...
+instrument deploy --config <path> --workspace-root <path> ...
+instrument comment --config <path> --workspace-root <path> --repo owner/repo --pr-number 123
+```
+
 ## GitHub Actions (consumer repos)
 
 App repos call the reusable workflow from this repo:

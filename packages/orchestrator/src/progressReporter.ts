@@ -2,12 +2,13 @@ import { appendFileSync } from "node:fs";
 
 import * as core from "@actions/core";
 
+import { formatPhaseDuration } from "./phaseUtils.js";
 import type {
   ICoverageAssessment,
   IDashboardPlan,
   IInstrumentReport,
   IStandardsReviewResult,
-  IProgressPhase,
+  IProgressSubPhase,
   IProgressPhaseState,
   IProgressReporter,
   IProgressReporterState,
@@ -19,6 +20,7 @@ import type { z } from "zod";
 
 const MAX_STREAM_SNIPPETS = 8;
 const MAX_STREAM_SNIPPET_LENGTH = 240;
+const MAX_SUMMARY_LOG_LINES = 5;
 
 const isGitHubActions = (): boolean => process.env.GITHUB_ACTIONS === "true";
 
@@ -26,7 +28,7 @@ const nowIso = (): string => new Date().toISOString();
 
 const getPhaseState = (
   state: IProgressReporterState,
-  phase: IProgressPhase,
+  phase: IProgressSubPhase,
 ): IProgressPhaseState => {
   const existing = state.phases.find((entry) => entry.name === phase);
 
@@ -95,10 +97,38 @@ const writeStepSummary = (line: string): void => {
   appendFileSync(summaryPath, `${line}\n`, "utf8");
 };
 
-export const createProgressReporter = (): IProgressReporter => {
+const writePhaseDetailsToSummary = (phaseState: IProgressPhaseState): void => {
+  writeStepSummary(`- Duration: ${formatPhaseDuration(phaseState)}`);
+
+  for (const log of phaseState.logs.slice(-MAX_SUMMARY_LOG_LINES)) {
+    writeStepSummary(`- Log (${log.level}): ${log.message}`);
+  }
+
+  if (phaseState.streamSnippets.length > 0) {
+    writeStepSummary("- Agent stream:");
+
+    for (const snippet of phaseState.streamSnippets.slice(-3)) {
+      writeStepSummary(`  - \`${snippet.text}\``);
+    }
+  }
+
+  writeStepSummary("");
+};
+
+export const createProgressReporter = (
+  initialState?: Partial<IProgressReporterState>,
+): IProgressReporter => {
   const state: IProgressReporterState = {
-    phases: [],
-    summaryLines: [],
+    phases: initialState?.phases ?? [],
+    summaryLines: initialState?.summaryLines ?? [],
+    assessment: initialState?.assessment,
+    report: initialState?.report,
+    standardsReview: initialState?.standardsReview,
+    dashboardPlan: initialState?.dashboardPlan,
+    deployResult: initialState?.deployResult,
+    runMetadata: initialState?.runMetadata,
+    runHistory: initialState?.runHistory,
+    codeAgentId: initialState?.codeAgentId,
   };
 
   const emit = (message: string): void => {
@@ -174,8 +204,8 @@ export const createProgressReporter = (): IProgressReporter => {
       const phaseState = getPhaseState(state, phase);
       phaseState.status = status;
       phaseState.completedAt = nowIso();
-      emit(`[instrument] phase ${status}: ${phase}`);
-      writeStepSummary(`\n`);
+      emit(`[instrument] phase ${status}: ${phase} (${formatPhaseDuration(phaseState)})`);
+      writePhaseDetailsToSummary(phaseState);
     },
 
     setAssessment: (assessment: ICoverageAssessment) => {

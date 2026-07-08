@@ -8,6 +8,7 @@ import type {
   ICoverageAssessment,
   IInstrumentReport,
   IProgressReporter,
+  IProgressSubPhase,
   IStandardsReviewResult,
 } from "./types.js";
 import { standardsReviewResultSchema } from "./types.js";
@@ -19,6 +20,7 @@ export interface IReviewAgentOptions {
   dryRun: boolean;
   reporter: IProgressReporter;
   simulateFail?: boolean;
+  phase?: IProgressSubPhase;
 }
 
 const PROMPT_PATH = join(
@@ -93,14 +95,14 @@ const buildDryRunReview = (
 export const runReviewAgent = async (
   options: IReviewAgentOptions,
 ): Promise<IStandardsReviewResult> => {
-  const { reporter, dryRun, report, assessment, workspaceRoot, simulateFail } = options;
+  const { reporter, dryRun, report, assessment, workspaceRoot, simulateFail, phase = "standards-review" } = options;
 
   if (dryRun || !process.env.CURSOR_API_KEY) {
     const reason = dryRun ? "dry-run mode" : "CURSOR_API_KEY not set";
-    reporter.decision("standards-review", "Dry run", `Mock review agent (${reason})`);
+    reporter.decision(phase, "Dry run", `Mock review agent (${reason})`);
     const result = buildDryRunReview(report, simulateFail ?? false);
     reporter.decision(
-      "standards-review",
+      phase,
       result.passed ? "Passed" : "Failed",
       result.summary,
     );
@@ -125,11 +127,11 @@ export const runReviewAgent = async (
   const result = await Agent.prompt(prompt, {
     apiKey: process.env.CURSOR_API_KEY,
     model: { id: "composer-2.5" },
-    local: { cwd: workspaceRoot, settingSources: ["project"] },
+    local: { cwd: workspaceRoot },
   });
 
   if (result.status === "error" || !result.result) {
-    reporter.log("standards-review", "Review agent run failed", "error");
+    reporter.log(phase, "Review agent run failed", "error");
 
     return standardsReviewResultSchema.parse({
       passed: false,
