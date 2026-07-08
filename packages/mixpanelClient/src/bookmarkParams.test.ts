@@ -22,11 +22,15 @@ describe("packages/mixpanelClient/src/bookmarkParams.ts", () => {
     const sections = params.sections as Record<string, unknown>;
     const show = sections.show as Array<Record<string, unknown>>;
     const behavior = show[0]?.behavior as Record<string, unknown>;
+    const measurement = show[0]?.measurement as Record<string, unknown>;
     const time = sections.time as Array<Record<string, unknown>>;
 
-    assert.deepEqual(behavior.value, { name: "checkout_retry_viewed" });
+    assert.equal(show[0]?.type, "metric");
+    assert.equal(behavior.type, "event");
+    assert.equal(behavior.name, "checkout_retry_viewed");
+    assert.equal(measurement.math, "general");
     assert.equal(time[0]?.dateRangeType, "in the last");
-    assert.equal(time[0]?.value, 30);
+    assert.deepEqual(time[0]?.window, { unit: "day", value: 30 });
     assert.deepEqual(params.displayOptions, {
       chartType: "line",
       analysis: "linear",

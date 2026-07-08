@@ -7,9 +7,12 @@ export const buildRelativeTimeSection = (
   unit = "day",
 ): Array<Record<string, unknown>> => [
   {
-    unit,
     dateRangeType: "in the last",
-    value: lastDays,
+    unit,
+    window: {
+      unit: "day",
+      value: lastDays,
+    },
   },
 ];
 
@@ -32,13 +35,16 @@ export const buildInsightsBookmarkParams = (
     sections: {
       show: [
         {
+          type: "metric",
           behavior: {
             type: "event",
+            name: plan.event,
             resourceType: "events",
-            value: { name: plan.event },
+            filtersDeterminer: "all",
+            filters: [],
           },
           measurement: {
-            math: "total",
+            math: "general",
           },
         },
       ],
