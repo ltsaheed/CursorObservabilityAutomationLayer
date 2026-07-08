@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { buildDashboardUrl, buildMixpanelReportUrl } from "./urls.js";
+import { buildDashboardUrl, buildMixpanelEventsUrl, buildMixpanelReportUrl } from "./urls.js";
 
 describe("packages/mixpanelClient/src/urls.ts", () => {
   test("given dashboard and bookmark ids this should build a report deep link", () => {
@@ -19,6 +19,15 @@ describe("packages/mixpanelClient/src/urls.ts", () => {
     assert.equal(
       url,
       "https://mixpanel.com/project/12345/view/67890/app/boards#id=111",
+    );
+  });
+
+  test("given an event name this should build a Mixpanel events url", () => {
+    const url = buildMixpanelEventsUrl("12345", "67890", "checkout_retry_viewed");
+
+    assert.equal(
+      url,
+      "https://mixpanel.com/project/12345/view/67890/app/events#checkout_retry_viewed",
     );
   });
 });

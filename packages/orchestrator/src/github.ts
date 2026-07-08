@@ -1,6 +1,10 @@
 import type { IProgressReporterState } from "./types.js";
+import type { IRunHistoryEntry } from "./types.js";
+import { buildMixpanelSectionForComment } from "./reviewComments.js";
 
 export const BOT_MARKER = "<!-- instrument-bot -->";
+export const RUN_HISTORY_MARKER_PREFIX = "<!-- instrument-run-history:";
+export const MAX_RUN_HISTORY = 8;
 
 export interface IGitHubRepoRef {
   owner: string;
@@ -86,8 +90,92 @@ const phaseStatusEmoji = (status: string): string => {
   return "🔄";
 };
 
-export const renderCommentBody = (state: IProgressReporterState): string => {
+export const computeOverallStatus = (
+  state: IProgressReporterState,
+): "passed" | "failed" | "partial" => {
+  const failedPhase = state.phases.some((phase) => phase.status === "failed");
+
+  if (failedPhase || state.standardsReview?.passed === false) {
+    return "failed";
+  }
+
+  const requiredPhases = ["pre-scan", "code-agent"] as const;
+  const allRequiredComplete = requiredPhases.every((name) =>
+    state.phases.some((phase) => phase.name === name && phase.status === "complete"),
+  );
+
+  if (allRequiredComplete && state.standardsReview?.passed === true) {
+    return "passed";
+  }
+
+  return "partial";
+};
+
+const overallStatusLabel = (status: "passed" | "failed" | "partial"): string => {
+  if (status === "passed") {
+    return "**PASSED**";
+  }
+
+  if (status === "failed") {
+    return "**FAILED**";
+  }
+
+  return "**PARTIAL**";
+};
+
+export const parseRunHistoryFromComment = (body: string): IRunHistoryEntry[] => {
+  const match = body.match(/<!-- instrument-run-history:([\s\S]*?) -->/);
+
+  if (!match?.[1]) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(match[1]) as IRunHistoryEntry[];
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+export const appendRunHistory = (
+  previous: IRunHistoryEntry[],
+  entry: IRunHistoryEntry,
+): IRunHistoryEntry[] => {
+  const deduped = previous.filter((item) => item.runId !== entry.runId);
+
+  return [entry, ...deduped].slice(0, MAX_RUN_HISTORY);
+};
+
+export const serializeRunHistory = (history: IRunHistoryEntry[]): string => {
+  return `${RUN_HISTORY_MARKER_PREFIX}${JSON.stringify(history)} -->`;
+};
+
+export const renderCommentBody = (
+  state: IProgressReporterState,
+  mixpanel?: { projectId?: string; workspaceId?: string },
+): string => {
   const lines: string[] = [BOT_MARKER, "## Instrument PR Report", ""];
+
+  if (state.runMetadata) {
+    lines.push(
+      `**Latest run:** ${overallStatusLabel(state.runMetadata.overallStatus)} · [Workflow #${state.runMetadata.runId}](${state.runMetadata.runUrl}) · attempt ${state.runMetadata.runAttempt} · ${state.runMetadata.updatedAt}`,
+      "",
+    );
+  }
+
+  if (state.runHistory && state.runHistory.length > 1) {
+    lines.push("### Recent runs", "| Status | Workflow | Updated |", "| --- | --- | --- |");
+
+    for (const run of state.runHistory.slice(0, MAX_RUN_HISTORY)) {
+      lines.push(
+        `| ${overallStatusLabel(run.status)} | [Run #${run.runId}](${run.runUrl}) | ${run.updatedAt} |`,
+      );
+    }
+
+    lines.push("");
+  }
 
   if (state.assessment) {
     lines.push("### Pre-scan", state.assessment.summary, "");
@@ -202,6 +290,16 @@ export const renderCommentBody = (state: IProgressReporterState): string => {
     }
 
     lines.push("");
+  } else if (state.report && state.dashboardPlan) {
+    lines.push(
+      ...buildMixpanelSectionForComment(
+        state.report,
+        state.dashboardPlan,
+        state.deployResult,
+        mixpanel?.projectId,
+        mixpanel?.workspaceId,
+      ),
+    );
   }
 
   if (state.summaryLines.length > 0) {
@@ -216,28 +314,56 @@ export const renderCommentBody = (state: IProgressReporterState): string => {
 
   lines.push("_Updated by Instrument bot._");
 
+  if (state.runHistory && state.runHistory.length > 0) {
+    lines.push("", serializeRunHistory(state.runHistory));
+  }
+
   return lines.join("\n");
+};
+
+export const listIssueComments = async (
+  context: IGitHubCommentContext,
+): Promise<IGitHubComment[]> => {
+  const comments: IGitHubComment[] = [];
+  let page = 1;
+
+  while (page <= 10) {
+    const path = `/repos/${context.repo.owner}/${context.repo.repo}/issues/${context.prNumber}/comments?per_page=100&page=${page}`;
+    const batch = await githubRequest<IGitHubComment[]>(context.token, path);
+
+    if (batch.length === 0) {
+      break;
+    }
+
+    comments.push(...batch);
+    page += 1;
+  }
+
+  return comments;
+};
+
+export const findInstrumentComment = (
+  comments: IGitHubComment[],
+): IGitHubComment | undefined => {
+  return comments.find((comment) => comment.body.includes(BOT_MARKER));
 };
 
 export const findOrCreateComment = async (
   context: IGitHubCommentContext,
   body: string,
-): Promise<{ commentId: number; url: string }> => {
-  const commentsPath = `/repos/${context.repo.owner}/${context.repo.repo}/issues/${context.prNumber}/comments`;
-  const comments = await githubRequest<IGitHubComment[]>(
-    context.token,
-    commentsPath,
-  );
-
-  const existing = comments.find((comment) => comment.body.includes(BOT_MARKER));
+): Promise<{ commentId: number; url: string; previousBody?: string }> => {
+  const comments = await listIssueComments(context);
+  const existing = findInstrumentComment(comments);
 
   if (existing) {
     return {
       commentId: existing.id,
       url: `https://github.com/${context.repo.owner}/${context.repo.repo}/pull/${context.prNumber}#issuecomment-${existing.id}`,
+      previousBody: existing.body,
     };
   }
 
+  const commentsPath = `/repos/${context.repo.owner}/${context.repo.repo}/issues/${context.prNumber}/comments`;
   const created = await githubRequest<IGitHubComment>(context.token, commentsPath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -267,9 +393,35 @@ export const updateComment = async (
 export const syncPrComment = async (
   context: IGitHubCommentContext,
   state: IProgressReporterState,
+  mixpanel?: { projectId?: string; workspaceId?: string },
 ): Promise<string> => {
-  const body = renderCommentBody(state);
-  const { commentId, url } = await findOrCreateComment(context, body);
+  const { commentId, url, previousBody } = await findOrCreateComment(context, BOT_MARKER);
+
+  const overallStatus = state.runMetadata?.overallStatus ?? computeOverallStatus(state);
+  const runMetadata = state.runMetadata ?? {
+    runId: "local",
+    runUrl: "#",
+    runAttempt: "1",
+    updatedAt: new Date().toISOString(),
+    overallStatus,
+  };
+
+  const previousHistory = previousBody ? parseRunHistoryFromComment(previousBody) : [];
+  const runHistory = appendRunHistory(previousHistory, {
+    runId: runMetadata.runId,
+    runUrl: runMetadata.runUrl,
+    status: overallStatus,
+    updatedAt: runMetadata.updatedAt,
+  });
+
+  const body = renderCommentBody(
+    {
+      ...state,
+      runMetadata: { ...runMetadata, overallStatus },
+      runHistory,
+    },
+    mixpanel,
+  );
 
   await updateComment(context, commentId, body);
 

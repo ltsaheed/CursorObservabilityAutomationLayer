@@ -86,6 +86,8 @@ export const instrumentEventSchema = z.object({
     z.union([z.string(), z.number(), z.boolean(), z.null()]),
   ),
   trigger: z.string(),
+  line: z.number().optional(),
+  justification: z.string().optional(),
 });
 
 export const instrumentPageSchema = z.object({
@@ -263,6 +265,23 @@ export interface IProgressReporterState {
   standardsReview?: IStandardsReviewResult;
   dashboardPlan?: IDashboardPlan;
   deployResult?: z.infer<typeof deployResultSchema>;
+  runMetadata?: IRunMetadata;
+  runHistory?: IRunHistoryEntry[];
+}
+
+export interface IRunMetadata {
+  runId: string;
+  runUrl: string;
+  runAttempt: string;
+  updatedAt: string;
+  overallStatus: "passed" | "failed" | "partial";
+}
+
+export interface IRunHistoryEntry {
+  runId: string;
+  runUrl: string;
+  status: "passed" | "failed" | "partial";
+  updatedAt: string;
 }
 
 export interface IProgressReporter {
@@ -276,6 +295,8 @@ export interface IProgressReporter {
   setStandardsReview: (review: IStandardsReviewResult) => void;
   setDashboardPlan: (plan: IDashboardPlan) => void;
   setDeployResult: (result: z.infer<typeof deployResultSchema>) => void;
+  setRunMetadata: (metadata: IRunMetadata) => void;
+  setRunHistory: (history: IRunHistoryEntry[]) => void;
   appendSummaryLine: (line: string) => void;
   getState: () => IProgressReporterState;
   finalize: () => Promise<void>;

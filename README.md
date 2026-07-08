@@ -58,14 +58,19 @@ App repos call the reusable workflow from this repo:
 ```yaml
 jobs:
   instrument:
+    permissions:
+      contents: read
+      pull-requests: write
     uses: YOUR_ORG/instrument/.github/workflows/instrument-reusable.yml@main
     with:
       tooling-repo: YOUR_ORG/instrument
       workspace-root: .
       config-path: instrument.config.json
-      dry-run: ${{ !secrets.CURSOR_API_KEY }}
+      dry-run: false
     secrets: inherit
 ```
+
+The caller job must grant `pull-requests: write` so Instrument can post the sticky PR comment.
 
 See [instrument-sample-app](https://github.com/YOUR_ORG/instrument-sample-app) for a full consumer example.
 
@@ -103,5 +108,8 @@ npm run typecheck
 4. **Dashboard agent** — plans Mixpanel insights/funnel reports (only if standards review passes)
 5. **Mixpanel deploy** — creates dashboard bookmarks via service account API
 6. **GitHub comment** — sticky PR comment with decisions, review result, and Mixpanel links
+7. **Inline review comments** — per-line comments on instrumented code with justifications and Mixpanel mapping (requires `line` + `justification` in the report)
 
 Human reviewers still approve PR merge — Instrument does not auto-merge.
+
+Inline comments appear on the PR diff as review comments (posted by `github-actions[bot]`). The Code Agent must include accurate `line` numbers in `.instrument/report.json` for them to anchor correctly.

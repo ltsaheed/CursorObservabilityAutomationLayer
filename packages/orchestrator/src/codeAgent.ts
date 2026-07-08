@@ -75,6 +75,9 @@ const buildCheckoutRetryDryRunReport = (
             name: "checkout_retry_viewed",
             properties: { page: "checkout_retry", step: "retry" },
             trigger: "trackPageView on mount",
+            line: 8,
+            justification:
+              "ADR-031 requires a page view on mount. Reused `trackPageView` instead of duplicating a raw `track('checkout_retry_viewed')` block.",
           },
           {
             name: "checkout_retry_back_clicked",
@@ -83,7 +86,10 @@ const buildCheckoutRetryDryRunReport = (
               step: "retry",
               cta: "back_to_checkout",
             },
-            trigger: "Link onClick handler",
+            trigger: "trackAction on Link onClick",
+            line: 18,
+            justification:
+              "The back link is a funnel exit point. `trackAction` captures the CTA with `step` for retry funnel analysis.",
           },
         ],
       },

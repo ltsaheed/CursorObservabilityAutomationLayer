@@ -11,6 +11,8 @@ import type {
   IProgressPhaseState,
   IProgressReporter,
   IProgressReporterState,
+  IRunHistoryEntry,
+  IRunMetadata,
 } from "./types.js";
 import { deployResultSchema } from "./types.js";
 import type { z } from "zod";
@@ -194,6 +196,14 @@ export const createProgressReporter = (): IProgressReporter => {
 
     setDeployResult: (result: z.infer<typeof deployResultSchema>) => {
       state.deployResult = result;
+    },
+
+    setRunMetadata: (metadata: IRunMetadata) => {
+      state.runMetadata = metadata;
+    },
+
+    setRunHistory: (history: IRunHistoryEntry[]) => {
+      state.runHistory = history;
     },
 
     appendSummaryLine: (line: string) => {

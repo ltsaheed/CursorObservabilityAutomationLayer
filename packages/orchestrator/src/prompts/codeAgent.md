@@ -26,9 +26,29 @@ Before adding instrumentation:
 4. Include `page` on every event; `step` on funnel pages.
 5. Never log PII. Event names stay snake_case via helpers.
 
-## Report schema
+Each event in `pages[].events` must include:
 
-Include helper metadata:
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | snake_case event name |
+| `properties` | yes | includes `page`; `step` on funnel pages |
+| `trigger` | yes | what fires the event (e.g. `trackPageView on mount`) |
+| `line` | yes | line number in the changed file where instrumentation was added |
+| `justification` | yes | 1-2 sentences: why this event exists and why this helper/pattern was chosen |
+
+Example event entry:
+
+```json
+{
+  "name": "checkout_retry_viewed",
+  "properties": { "page": "checkout_retry", "step": "retry" },
+  "trigger": "trackPageView on mount",
+  "line": 8,
+  "justification": "ADR-031 page view on mount; reused trackPageView to avoid duplicating useEffect+track."
+}
+```
+
+Instrument posts **inline PR review comments** on each `line` with the justification and Mixpanel mapping. Accurate line numbers are required.
 
 ```json
 {

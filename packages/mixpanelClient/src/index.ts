@@ -32,4 +32,4 @@ export type {
   IMixpanelEnvConfig,
   IReportPlan,
 } from "./types.js";
-export { buildDashboardUrl, buildMixpanelReportUrl } from "./urls.js";
+export { buildDashboardUrl, buildMixpanelEventsUrl, buildMixpanelReportUrl } from "./urls.js";

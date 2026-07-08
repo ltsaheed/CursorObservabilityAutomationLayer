@@ -18,3 +18,13 @@ export const buildDashboardUrl = (
 ): string => {
   return `${MIXPANEL_APP_ORIGIN}/project/${projectId}/view/${workspaceId}/app/boards#id=${dashboardId}`;
 };
+
+export const buildMixpanelEventsUrl = (
+  projectId: string,
+  workspaceId: string,
+  eventName: string,
+): string => {
+  const encoded = encodeURIComponent(eventName);
+
+  return `${MIXPANEL_APP_ORIGIN}/project/${projectId}/view/${workspaceId}/app/events#${encoded}`;
+};
