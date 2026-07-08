@@ -169,11 +169,16 @@ jobs:
           mapfile -t ARGS <<< "$COMMON_ARGS"
           npm run instrument -- code-agent "${ARGS[@]}"
 
-      - name: Pull Code Agent commits
-        if: ${{ inputs.skip-code-agent != true && inputs.dry-run != true }}
+      - name: Sync workspace with Code Agent commits
+        if: ${{ inputs.skip-code-agent != true && inputs.dry-run != true && github.event_name == 'pull_request' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git pull --ff-only origin "${{ github.event.pull_request.head.ref }}"
+          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          git fetch "https://x-access-token:${GITHUB_TOKEN}@github.com/${HEAD_REPO}.git" "${HEAD_REF}"
+          git reset --hard FETCH_HEAD
 
       - name: Standards review
         env:
