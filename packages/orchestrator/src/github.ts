@@ -1,5 +1,6 @@
 import type { IProgressReporterState, IProgressPhaseState } from "./types.js";
 import type { IRunHistoryEntry } from "./types.js";
+import { getPhaseDescription } from "./phaseDescriptions.js";
 import { formatPhaseDuration, resolvePhaseAgentLabel } from "./phaseUtils.js";
 import { buildMixpanelSectionForComment } from "./reviewComments.js";
 
@@ -191,8 +192,10 @@ export const renderPhaseTimeline = (state: IProgressReporterState): string[] => 
   ];
 
   for (const phase of state.phases) {
+    const { title, subtitle } = getPhaseDescription(phase.name);
+
     lines.push(
-      `| ${phase.name} | ${phaseStatusEmoji(phase.status)} ${phase.status} | ${formatPhaseDuration(phase)} | ${resolvePhaseAgentLabel(phase.name, state.codeAgentId)} |`,
+      `| ${title}<br><sub>${subtitle}</sub> | ${phaseStatusEmoji(phase.status)} ${phase.status} | ${formatPhaseDuration(phase)} | ${resolvePhaseAgentLabel(phase.name, state.codeAgentId)} |`,
     );
   }
 

@@ -87,7 +87,8 @@ describe("packages/orchestrator/src/github.ts", () => {
     const body = lines.join("\n");
 
     assert.match(body, /Run timeline/);
-    assert.match(body, /code-agent\/resume-1/);
+    assert.match(body, /Pre-scan/);
+    assert.match(body, /Code Agent/);
     assert.match(body, /agent-abc/);
   });
 

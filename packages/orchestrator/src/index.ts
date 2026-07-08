@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 
 import { runPipelinePhase, runFullPipeline } from "./pipelineCommands.js";
 import type { IPipelinePhaseName } from "./pipelineCommands.js";
+import { PHASE_DESCRIPTIONS, formatGhaStepName } from "./phaseDescriptions.js";
 import { runOptionsSchema } from "./types.js";
 
 const loadEnvForWorkspace = (workspaceRoot: string): void => {
@@ -92,20 +93,32 @@ addSharedRunOptions(
     }),
 );
 
-addPhaseCommand(program, "pre-scan", "Detect analytics gaps in changed files");
+addPhaseCommand(program, "pre-scan", formatGhaStepName(PHASE_DESCRIPTIONS["pre-scan"]));
 addPhaseCommand(
   program,
   "code-agent",
-  "Run the Cursor Cloud Agent to add instrumentation",
+  formatGhaStepName(PHASE_DESCRIPTIONS["code-agent"]),
 );
 addPhaseCommand(
   program,
   "review",
-  "Run standards review loop (Review Agent + Code Agent resume)",
+  formatGhaStepName(PHASE_DESCRIPTIONS["standards-review"]),
 );
-addPhaseCommand(program, "dashboard", "Plan Mixpanel dashboard reports");
-addPhaseCommand(program, "deploy", "Deploy dashboard bookmarks to Mixpanel");
-addPhaseCommand(program, "comment", "Sync sticky PR comment and inline review comments");
+addPhaseCommand(
+  program,
+  "dashboard",
+  formatGhaStepName(PHASE_DESCRIPTIONS["dashboard-agent"]),
+);
+addPhaseCommand(
+  program,
+  "deploy",
+  formatGhaStepName(PHASE_DESCRIPTIONS["mixpanel-deploy"]),
+);
+addPhaseCommand(
+  program,
+  "comment",
+  formatGhaStepName(PHASE_DESCRIPTIONS["github-comment"]),
+);
 
 program.parseAsync(process.argv).catch((error: unknown) => {
   const message = error instanceof Error ? error.message : "Instrument CLI failed";

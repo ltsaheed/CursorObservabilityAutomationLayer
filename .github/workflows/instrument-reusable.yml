@@ -58,33 +58,33 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - name: Checkout app
+      - name: "Checkout app: Load the application repository for this pull request"
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Checkout Instrument tooling
+      - name: "Checkout Instrument tooling: Load the central Instrument orchestrator from the tooling repo"
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.tooling-repo }}
           ref: ${{ inputs.tooling-ref }}
           path: .instrument/tooling
 
-      - name: Setup Node
+      - name: "Setup Node: Install Node.js 22 to run the Instrument CLI"
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: .instrument/tooling/package-lock.json
 
-      - name: Install ripgrep for Cursor SDK local agents
+      - name: "Install ripgrep: Required by Cursor SDK local agents"
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
-      - name: Install and build tooling
+      - name: "Install and build tooling: Compile the Instrument CLI before pipeline phases run"
         working-directory: .instrument/tooling
         run: npm ci && npm run build
 
-      - name: Collect changed files
+      - name: "Collect changed files: List files changed in this PR to scope analytics scanning"
         id: changed
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
@@ -117,7 +117,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Configure Instrument CLI
+      - name: "Configure Instrument CLI: Resolve config paths, PR metadata, and flags for pipeline phases"
         id: instrument-cli
         run: |
           WORKSPACE="${{ github.workspace }}/${{ inputs.workspace-root }}"
@@ -152,7 +152,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_ENV"
 
-      - name: Pre-scan
+      - name: "Pre-scan: Scan changed page files for missing analytics events (deterministic, no AI)"
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -160,7 +160,7 @@ jobs:
           mapfile -t ARGS <<< "$COMMON_ARGS"
           npm run instrument -- pre-scan "${ARGS[@]}"
 
-      - name: Code Agent
+      - name: "Code Agent: Cursor Cloud Agent adds instrumentation and commits to the PR branch"
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -169,18 +169,23 @@ jobs:
           mapfile -t ARGS <<< "$COMMON_ARGS"
           npm run instrument -- code-agent "${ARGS[@]}"
 
-      - name: Sync workspace with Code Agent commits
+      - name: "Sync workspace: Pull Code Agent commits onto this runner before later phases run"
         if: ${{ inputs.skip-code-agent != true && inputs.dry-run != true && github.event_name == 'pull_request' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          {
+            echo "### Sync workspace"
+            echo "_Pull the latest PR branch after the Cloud Agent pushed instrumentation commits._"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
           HEAD_REF="${{ github.event.pull_request.head.ref }}"
           git fetch "https://x-access-token:${GITHUB_TOKEN}@github.com/${HEAD_REPO}.git" "${HEAD_REF}"
           git reset --hard FETCH_HEAD
 
-      - name: Standards review
+      - name: "Standards review: Review Agent validates against ADR-031 with up to 2 auto-fix retries"
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -189,7 +194,7 @@ jobs:
           mapfile -t ARGS <<< "$COMMON_ARGS"
           npm run instrument -- review "${ARGS[@]}"
 
-      - name: Dashboard agent
+      - name: "Dashboard agent: Plan Mixpanel insights and funnel reports for new events"
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -198,7 +203,7 @@ jobs:
           mapfile -t ARGS <<< "$COMMON_ARGS"
           npm run instrument -- dashboard "${ARGS[@]}"
 
-      - name: Mixpanel deploy
+      - name: "Mixpanel deploy: Create dashboard bookmarks via the Mixpanel service account API"
         env:
           MIXPANEL_SERVICE_ACCOUNT_USERNAME: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME }}
           MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
@@ -211,7 +216,7 @@ jobs:
           mapfile -t ARGS <<< "$COMMON_ARGS"
           npm run instrument -- deploy "${ARGS[@]}"
 
-      - name: Sync PR comment
+      - name: "PR feedback: Post the sticky PR summary and inline review comments on the diff"
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -219,7 +224,7 @@ jobs:
           mapfile -t ARGS <<< "$COMMON_ARGS"
           npm run instrument -- comment "${ARGS[@]}"
 
-      - name: Upload pipeline state artifact
+      - name: "Upload pipeline state: Save run state as a workflow artifact for debugging"
         if: always()
         uses: actions/upload-artifact@v4
         with:

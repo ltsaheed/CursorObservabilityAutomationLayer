@@ -1,4 +1,4 @@
-import type { IInstrumentEvent, IInstrumentReport } from "./types.js";
+import type { IInstrumentChangeBlock, IInstrumentEvent, IInstrumentReport } from "./types.js";
 
 export const CHANGE_BLOCK_LINE_GAP = 5;
 
@@ -6,9 +6,55 @@ export interface IReviewCommentBlockTarget {
   file: string;
   startLine: number;
   endLine: number;
-  justification: string;
+  visibility: string;
   events: IInstrumentEvent[];
 }
+
+export const inferEventVisibility = (event: IInstrumentEvent): string => {
+  if (event.visibility?.trim()) {
+    return event.visibility.trim();
+  }
+
+  if (event.name.endsWith("_viewed")) {
+    return `Measure how many users reach this step and how traffic trends over time (\`${event.name}\`).`;
+  }
+
+  if (event.name.includes("_clicked") || event.name.includes("_submitted")) {
+    return `See when users take this action so you can compare engagement and drop-off (\`${event.name}\`).`;
+  }
+
+  return `Track this user behavior in Mixpanel to understand adoption and funnel health (\`${event.name}\`).`;
+};
+
+export const buildClusteredVisibility = (events: IInstrumentEvent[]): string => {
+  if (events.length === 0) {
+    return "Adds shared analytics plumbing so product and growth teams can measure this flow consistently in Mixpanel.";
+  }
+
+  if (events.length === 1) {
+    return inferEventVisibility(events[0]!);
+  }
+
+  return events.map((event) => `- ${inferEventVisibility(event)}`).join("\n");
+};
+
+export const resolveChangeBlockVisibility = (
+  block: Pick<IInstrumentChangeBlock, "visibility" | "justification">,
+  events: IInstrumentEvent[],
+): string => {
+  if (block.visibility?.trim()) {
+    return block.visibility.trim();
+  }
+
+  if (events.length > 0) {
+    return buildClusteredVisibility(events);
+  }
+
+  return (
+    block.justification?.trim() ??
+    "Adds analytics coverage so this part of the product is visible in Mixpanel."
+  );
+};
 
 const indexEventsByName = (report: IInstrumentReport): Map<string, IInstrumentEvent> => {
   const events = new Map<string, IInstrumentEvent>();
@@ -99,29 +145,14 @@ const buildBlockTarget = (
   const lines = events.map((event) => event.line ?? 0);
   const startLine = Math.min(...lines);
   const endLine = Math.max(...lines);
-  const justification = buildClusteredJustification(events);
 
   return {
     file,
     startLine,
     endLine,
-    justification,
+    visibility: buildClusteredVisibility(events),
     events,
   };
-};
-
-const buildClusteredJustification = (events: IInstrumentEvent[]): string => {
-  if (events.length === 1) {
-    return events[0]?.justification ?? events[0]?.trigger ?? "Instrumentation added.";
-  }
-
-  return events
-    .map((event) => {
-      const detail = event.justification ?? event.trigger;
-
-      return `- \`${event.name}\`: ${detail}`;
-    })
-    .join("\n");
 };
 
 export const collectReviewCommentBlockTargets = (
@@ -146,7 +177,7 @@ export const collectReviewCommentBlockTargets = (
         file: block.file,
         startLine: block.startLine,
         endLine: block.endLine,
-        justification: block.justification,
+        visibility: resolveChangeBlockVisibility(block, events),
         events,
       });
     }

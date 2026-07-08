@@ -2,6 +2,7 @@ import { appendFileSync } from "node:fs";
 
 import * as core from "@actions/core";
 
+import { formatPhaseStepSummary, getPhaseDescription } from "./phaseDescriptions.js";
 import { formatPhaseDuration } from "./phaseUtils.js";
 import type {
   ICoverageAssessment,
@@ -145,8 +146,9 @@ export const createProgressReporter = (
       const phaseState = getPhaseState(state, phase);
       phaseState.status = "running";
       phaseState.startedAt = nowIso();
-      emit(`[instrument] phase start: ${phase}`);
-      writeStepSummary(`### ${phase}\n`);
+      const { title } = getPhaseDescription(phase);
+      emit(`[instrument] phase start: ${title}`);
+      writeStepSummary(formatPhaseStepSummary(phase));
     },
 
     decision: (phase, label, detail) => {

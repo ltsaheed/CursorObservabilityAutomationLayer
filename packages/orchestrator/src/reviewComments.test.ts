@@ -24,6 +24,8 @@ const sampleReport: IInstrumentReport = {
           trigger: "trackPageView on mount",
           line: 8,
           justification: "Page view required on mount per ADR-031.",
+          visibility:
+            "You'll be able to measure how many users reach the checkout retry step and trend that volume over time.",
         },
       ],
     },
@@ -38,7 +40,8 @@ const sampleReport: IInstrumentReport = {
       file: "src/pages/CheckoutRetryPage.tsx",
       startLine: 8,
       endLine: 8,
-      justification: "Page view required on mount per ADR-031.",
+      visibility:
+        "You'll be able to measure how many users reach the checkout retry step and trend that volume over time.",
       events: ["checkout_retry_viewed"],
     },
   ],
@@ -85,9 +88,8 @@ describe("packages/orchestrator/src/reviewComments.ts", () => {
     );
     const body = buildChangeBlockCommentBody(block, new Map([["checkout_retry_viewed", mixpanel]]));
 
-    assert.match(body, /Why this change/);
-    assert.match(body, /Events in this change/);
-    assert.match(body, /checkout_retry_viewed/);
+    assert.match(body, /What you'll see in analytics/);
+    assert.match(body, /checkout retry step/);
     assert.match(body, /lines 8-8|line 8/);
   });
 
@@ -132,8 +134,8 @@ describe("packages/orchestrator/src/reviewComments.ts", () => {
       resolveEventMixpanelContext("checkout_retry_viewed", samplePlan, undefined, "123", "456"),
     );
 
-    assert.match(body, /Why this change/);
-    assert.match(body, /checkout_retry_viewed/);
+    assert.match(body, /What you'll see in analytics/);
+    assert.match(body, /checkout retry step/);
     assert.match(body, /Mixpanel/);
     assert.match(body, /Cursor Cloud Agent/);
   });

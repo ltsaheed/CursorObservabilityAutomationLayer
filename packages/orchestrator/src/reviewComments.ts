@@ -166,8 +166,8 @@ export const buildChangeBlockCommentBody = (
     REVIEW_MARKER,
     `**Instrument** · ${titleEvents} · _Cursor Cloud Agent_`,
     "",
-    "**Why this change**",
-    block.justification,
+    "**What you'll see in analytics**",
+    block.visibility,
     "",
   ];
 
@@ -247,7 +247,7 @@ export const buildReviewCommentBody = (
       file,
       startLine: event.line ?? 1,
       endLine: event.line ?? 1,
-      justification: event.justification ?? event.trigger,
+      visibility: event.visibility ?? event.justification ?? event.trigger,
       events: [event],
     },
     new Map([[event.name, mixpanel]]),

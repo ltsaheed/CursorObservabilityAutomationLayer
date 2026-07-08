@@ -76,6 +76,7 @@ const normalizeEvent = (event: unknown): Record<string, unknown> | null => {
     ...(typeof record.justification === "string"
       ? { justification: record.justification }
       : {}),
+    ...(typeof record.visibility === "string" ? { visibility: record.visibility } : {}),
   };
 };
 

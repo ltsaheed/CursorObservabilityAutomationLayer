@@ -34,7 +34,8 @@ Each event in `pages[].events` must include:
 | `properties` | yes | includes `page`; `step` on funnel pages |
 | `trigger` | yes | what fires the event (e.g. `trackPageView on mount`) |
 | `line` | yes | line number in the changed file where instrumentation was added |
-| `justification` | yes | 1-2 sentences: why this event exists and why this helper/pattern was chosen |
+| `justification` | yes | 1-2 sentences for **standards review**: why this event exists and which helper/pattern was chosen (technical) |
+| `visibility` | yes | 1-2 sentences for **PR reviewers**: what product/growth teams will be able to see in Mixpanel because of this event |
 
 Example event entry:
 
@@ -44,7 +45,8 @@ Example event entry:
   "properties": { "page": "checkout_retry", "step": "retry" },
   "trigger": "trackPageView on mount",
   "line": 8,
-  "justification": "ADR-031 page view on mount; reused trackPageView to avoid duplicating useEffect+track."
+  "justification": "ADR-031 page view on mount; reused trackPageView to avoid duplicating useEffect+track.",
+  "visibility": "You'll see how many users land on the checkout retry step each day and whether retry traffic is growing or shrinking."
 }
 ```
 
@@ -57,8 +59,11 @@ Each block in `changeBlocks` must include:
 | `file` | yes | path relative to repo root |
 | `startLine` | yes | first line of this change block in the diff |
 | `endLine` | yes | last line of this change block (same as startLine for a single line) |
-| `justification` | yes | 2-3 sentences explaining the whole block (why these lines changed together) |
+| `visibility` | yes | 2-3 sentences for **PR reviewers**: what questions this block answers in Mixpanel, who cares, and what decisions it enables (plain language, no ADR jargon) |
+| `justification` | no | optional technical note for standards review (helper choice, ADR compliance) |
 | `events` | no | event names from `pages[].events` covered by this block (empty for helper-only blocks) |
+
+Write `visibility` for a **customer / product stakeholder** reading the PR: focus on funnel visibility, conversion, drop-off, trends, and which Mixpanel reports will light up — not implementation details.
 
 Example: mount tracking on lines 8-11 and a click handler on line 24 → **two** `changeBlocks` entries on the same file.
 
@@ -69,12 +74,23 @@ Example change block:
   "file": "src/pages/CheckoutRetryPage.tsx",
   "startLine": 8,
   "endLine": 11,
-  "justification": "Page mount block: ADR-031 page view on mount via trackPageView.",
+  "visibility": "You'll be able to measure how many users hit the checkout retry screen after a failed payment, trend that volume over time, and spot spikes in payment failures.",
+  "justification": "Page mount block uses trackPageView per ADR-031.",
   "events": ["checkout_retry_viewed"]
 }
 ```
 
-Helper-only edits (e.g. new function in `src/lib/analytics.ts`) also need a `changeBlocks` entry with `events: []` and line range covering the helper.
+Helper-only example:
+
+```json
+{
+  "file": "src/lib/analytics.ts",
+  "startLine": 42,
+  "endLine": 55,
+  "visibility": "Centralizes retry-step tracking so product teams get consistent page and action events in Mixpanel without each page reimplementing the same helpers.",
+  "events": []
+}
+```
 
 ```json
 {

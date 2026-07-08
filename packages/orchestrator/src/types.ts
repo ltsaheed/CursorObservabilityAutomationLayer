@@ -88,6 +88,7 @@ export const instrumentEventSchema = z.object({
   trigger: z.string(),
   line: z.number().optional(),
   justification: z.string().optional(),
+  visibility: z.string().optional(),
 });
 
 export const instrumentPageSchema = z.object({
@@ -100,7 +101,8 @@ export const instrumentChangeBlockSchema = z.object({
   file: z.string(),
   startLine: z.number(),
   endLine: z.number(),
-  justification: z.string(),
+  visibility: z.string().optional(),
+  justification: z.string().optional(),
   events: z.array(z.string()).default([]),
 });
 

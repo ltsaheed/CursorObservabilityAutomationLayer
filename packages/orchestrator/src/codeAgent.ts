@@ -72,6 +72,8 @@ const buildCheckoutRetryDryRunReport = (
             line: 8,
             justification:
               "ADR-031 requires a page view on mount. Reused `trackPageView` instead of duplicating a raw `track('checkout_retry_viewed')` block.",
+            visibility:
+              "You'll see how many users land on the checkout retry step and whether retry traffic is trending up or down.",
           },
           {
             name: "checkout_retry_back_clicked",
@@ -84,6 +86,8 @@ const buildCheckoutRetryDryRunReport = (
             line: 18,
             justification:
               "The back link is a funnel exit point. `trackAction` captures the CTA with `step` for retry funnel analysis.",
+            visibility:
+              "You'll see how often users abandon retry and go back to checkout, so you can measure drop-off at this step.",
           },
         ],
       },
@@ -109,16 +113,18 @@ const buildCheckoutRetryDryRunReport = (
         file: targetFile,
         startLine: 8,
         endLine: 8,
-        justification:
-          "Page mount block: ADR-031 requires a page view on mount. Reused `trackPageView` instead of duplicating raw `track()`.",
+        visibility:
+          "You'll be able to measure how many users reach the checkout retry screen after a failed payment and trend that volume over time in Mixpanel.",
+        justification: "Page mount block uses trackPageView per ADR-031.",
         events: ["checkout_retry_viewed"],
       },
       {
         file: targetFile,
         startLine: 18,
         endLine: 18,
-        justification:
-          "Navigation block: the back link is a funnel exit point. `trackAction` captures the CTA with `step` for retry funnel analysis.",
+        visibility:
+          "You'll see how often users leave retry and go back to checkout, which helps quantify drop-off before they complete payment.",
+        justification: "Navigation block uses trackAction on the back link CTA.",
         events: ["checkout_retry_back_clicked"],
       },
     ],
