@@ -37,6 +37,42 @@ export interface IMixpanelDashboard {
   description?: string;
 }
 
+export interface IMixpanelDashboardReportContent {
+  id: number;
+  name: string;
+  type: "insights" | "funnels";
+  description?: string;
+  params?: string | Record<string, unknown>;
+}
+
+export interface IMixpanelDashboardDetail extends IMixpanelDashboard {
+  layout?: {
+    order: string[];
+    rows: Record<
+      string,
+      {
+        height: number;
+        cells: Array<{
+          id: string;
+          width: number;
+          content_id: number;
+          content_type: string;
+        }>;
+      }
+    >;
+  };
+  contents?: {
+    report?: Record<string, IMixpanelDashboardReportContent>;
+  };
+}
+
+export interface ICreateInlineReportParams {
+  name: string;
+  bookmarkType: "insights" | "funnels";
+  params: Record<string, unknown>;
+  description?: string;
+}
+
 export interface IMixpanelBookmark {
   id: number;
   name: string;

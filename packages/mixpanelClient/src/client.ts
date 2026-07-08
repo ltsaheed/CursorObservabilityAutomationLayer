@@ -17,6 +17,7 @@ export class MixpanelAppApiError extends Error {
 }
 
 export interface IMixpanelHttpClient {
+  get<T>(path: string): Promise<T>;
   post<T>(path: string, body: Record<string, unknown>): Promise<T>;
   patch<T>(path: string, body: Record<string, unknown>): Promise<T>;
 }
@@ -93,9 +94,9 @@ export const createMixpanelHttpClient = (
   );
 
   const request = async <T>(
-    method: "POST" | "PATCH",
+    method: "GET" | "POST" | "PATCH",
     path: string,
-    body: Record<string, unknown>,
+    body?: Record<string, unknown>,
   ): Promise<T> => {
     const url = new URL(path.replace(/^\//, ""), baseUrl).toString();
     const response = await fetchImpl(url, {
@@ -103,9 +104,9 @@ export const createMixpanelHttpClient = (
       headers: {
         Authorization: authHeader,
         Accept: "application/json",
-        "Content-Type": "application/json",
+        ...(body ? { "Content-Type": "application/json" } : {}),
       },
-      body: JSON.stringify(body),
+      ...(body ? { body: JSON.stringify(body) } : {}),
     });
     const responseBody = await parseJsonBody(response);
 
@@ -123,6 +124,7 @@ export const createMixpanelHttpClient = (
   };
 
   return {
+    get: <T>(path: string) => request<T>("GET", path),
     post: <T>(path: string, body: Record<string, unknown>) =>
       request<T>("POST", path, body),
     patch: <T>(path: string, body: Record<string, unknown>) =>

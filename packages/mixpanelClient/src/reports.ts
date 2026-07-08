@@ -9,12 +9,14 @@ import { resolveMixpanelRegion } from "./endpoints.js";
 import type {
   ICreateBookmarkParams,
   ICreateDashboardParams,
+  ICreateInlineReportParams,
   IDeployDashboardPlanOptions,
   IDeployDashboardPlanResult,
   IDeployedReport,
   IMixpanelBookmark,
   IMixpanelClientConfig,
   IMixpanelDashboard,
+  IMixpanelDashboardDetail,
 } from "./types.js";
 import { buildDashboardUrl, buildMixpanelReportUrl } from "./urls.js";
 
@@ -45,6 +47,16 @@ export const createDashboard = async (
   return dashboard;
 };
 
+export const getDashboard = async (
+  config: IMixpanelClientConfig,
+  dashboardId: number,
+): Promise<IMixpanelDashboardDetail> => {
+  const client = createMixpanelHttpClient(config);
+  const path = getDashboardPath(config, dashboardId);
+
+  return client.get<IMixpanelDashboardDetail>(path);
+};
+
 export const createBookmark = async (
   config: IMixpanelClientConfig,
   params: ICreateBookmarkParams,
@@ -72,11 +84,11 @@ export const addReportToDashboard = async (
   config: IMixpanelClientConfig,
   dashboardId: number,
   bookmarkId: number,
-): Promise<void> => {
+): Promise<IMixpanelDashboardDetail> => {
   const client = createMixpanelHttpClient(config);
   const path = getDashboardPath(config, dashboardId);
 
-  await client.patch(path, {
+  return client.patch<IMixpanelDashboardDetail>(path, {
     content: {
       action: "create",
       content_type: "report",
@@ -85,6 +97,53 @@ export const addReportToDashboard = async (
       },
     },
   });
+};
+
+export const createInlineReportOnDashboard = async (
+  config: IMixpanelClientConfig,
+  dashboardId: number,
+  params: ICreateInlineReportParams,
+): Promise<IMixpanelDashboardDetail> => {
+  const client = createMixpanelHttpClient(config);
+  const path = getDashboardPath(config, dashboardId);
+  const bookmarkPayload: Record<string, unknown> = {
+    name: params.name,
+    type: params.bookmarkType,
+    params: JSON.stringify(params.params),
+  };
+
+  if (params.description) {
+    bookmarkPayload.description = params.description;
+  }
+
+  return client.patch<IMixpanelDashboardDetail>(path, {
+    content: {
+      action: "create",
+      content_type: "report",
+      content_params: {
+        bookmark: bookmarkPayload,
+      },
+    },
+  });
+};
+
+export const findReportOnDashboard = (
+  dashboard: IMixpanelDashboardDetail,
+  reportName: string,
+): { contentId: number; bookmarkId: number } | undefined => {
+  const reports = dashboard.contents?.report;
+
+  if (!reports) {
+    return undefined;
+  }
+
+  for (const [contentId, report] of Object.entries(reports)) {
+    if (report.name === reportName) {
+      return { contentId: Number(contentId), bookmarkId: report.id };
+    }
+  }
+
+  return undefined;
 };
 
 export const deployDashboardPlan = async (
@@ -138,24 +197,30 @@ export const deployDashboardPlan = async (
   const reports: IDeployedReport[] = [];
 
   for (const reportPlan of plan.reports) {
-    const bookmark = await createBookmark(config, {
+    let dashboard = await createInlineReportOnDashboard(config, dashboardId, {
       name: reportPlan.name,
       bookmarkType: reportPlan.type,
-      description: reportPlan.description,
-      dashboardId,
       params: buildBookmarkParams(reportPlan),
+      description: reportPlan.description,
     });
 
-    await addReportToDashboard(config, dashboardId, bookmark.id);
+    let located = findReportOnDashboard(dashboard, reportPlan.name);
+
+    if (!located) {
+      dashboard = await getDashboard(config, dashboardId);
+      located = findReportOnDashboard(dashboard, reportPlan.name);
+    }
+
+    const bookmarkId = located?.bookmarkId ?? 0;
 
     reports.push({
       plan: reportPlan,
-      bookmarkId: bookmark.id,
+      bookmarkId,
       reportUrl: buildMixpanelReportUrl(
         config.projectId,
         config.workspaceId,
         dashboardId,
-        bookmark.id,
+        bookmarkId,
         region,
       ),
     });

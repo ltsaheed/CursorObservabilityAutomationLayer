@@ -17,13 +17,18 @@ export {
   buildBookmarkParams,
   buildFunnelsBookmarkParams,
   buildInsightsBookmarkParams,
+  addReportToDashboard,
   createBookmark,
   createDashboard,
+  createInlineReportOnDashboard,
   deployDashboardPlan,
+  findReportOnDashboard,
+  getDashboard,
 } from "./reports.js";
 export type {
   ICreateBookmarkParams,
   ICreateDashboardParams,
+  ICreateInlineReportParams,
   IDashboardPlan,
   IDashboardPlanDecision,
   IDeployDashboardPlanOptions,
@@ -36,6 +41,8 @@ export type {
   IMixpanelBookmark,
   IMixpanelClientConfig,
   IMixpanelDashboard,
+  IMixpanelDashboardDetail,
+  IMixpanelDashboardReportContent,
   IMixpanelEnvConfig,
   IReportPlan,
 } from "./types.js";

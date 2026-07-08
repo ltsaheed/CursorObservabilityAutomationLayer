@@ -5,9 +5,11 @@ import { MixpanelAppApiError } from "./client.js";
 import {
   createBookmark,
   createDashboard,
+  createInlineReportOnDashboard,
   deployDashboardPlan,
+  findReportOnDashboard,
 } from "./reports.js";
-import type { IMixpanelClientConfig, IDashboardPlan } from "./types.js";
+import type { IMixpanelClientConfig, IDashboardPlan, IMixpanelDashboardDetail } from "./types.js";
 
 const baseConfig: IMixpanelClientConfig = {
   serviceAccountUsername: "sa_test",
@@ -25,6 +27,25 @@ const createMockFetch = (
     return Promise.resolve(handler(resolvedUrl, init));
   }) as typeof fetch;
 };
+
+const dashboardWithReport = (
+  dashboardId: number,
+  contentId: number,
+  bookmarkId: number,
+  name: string,
+): IMixpanelDashboardDetail => ({
+  id: dashboardId,
+  title: "Instrument Reports",
+  contents: {
+    report: {
+      [String(contentId)]: {
+        id: bookmarkId,
+        name,
+        type: "insights",
+      },
+    },
+  },
+});
 
 describe("packages/mixpanelClient/src/reports.ts", () => {
   test("given dashboard params this should POST to the workspace dashboards path", async () => {
@@ -93,6 +114,59 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     assert.deepEqual(requests[0]?.body.params, { series: [] });
   });
 
+  test("given inline report params this should PATCH dashboard with stringified bookmark params", async () => {
+    const requests: Array<{ method: string; url: string; body: Record<string, unknown> }> =
+      [];
+    const config: IMixpanelClientConfig = {
+      ...baseConfig,
+      fetchImpl: createMockFetch((url, init) => {
+        requests.push({
+          method: init?.method ?? "GET",
+          url,
+          body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        });
+
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            results: dashboardWithReport(500, 90001, 42, "Checkout Retry Views"),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    };
+
+    const dashboard = await createInlineReportOnDashboard(config, 500, {
+      name: "Checkout Retry Views",
+      bookmarkType: "insights",
+      params: { sections: { show: [] } },
+      description: "Daily views",
+    });
+
+    assert.equal(dashboard.id, 500);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]?.method, "PATCH");
+    assert.match(requests[0]?.url, /\/dashboards\/500$/);
+
+    const content = requests[0]?.body.content as Record<string, unknown>;
+    const contentParams = content.content_params as Record<string, unknown>;
+    const bookmark = contentParams.bookmark as Record<string, unknown>;
+
+    assert.equal(content.action, "create");
+    assert.equal(content.content_type, "report");
+    assert.equal(typeof bookmark.params, "string");
+    assert.equal(bookmark.name, "Checkout Retry Views");
+  });
+
+  test("given dashboard contents this should find report by name", () => {
+    const located = findReportOnDashboard(
+      dashboardWithReport(500, 90001, 42, "Checkout Retry Views"),
+      "Checkout Retry Views",
+    );
+
+    assert.deepEqual(located, { contentId: 90001, bookmarkId: 42 });
+  });
+
   test("given an API error this should throw MixpanelAppApiError", async () => {
     const config: IMixpanelClientConfig = {
       ...baseConfig,
@@ -115,14 +189,19 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     );
   });
 
-  test("given a dashboard plan this should create dashboard and bookmarks", async () => {
-    const requests: Array<{ method: string; url: string }> = [];
+  test("given a dashboard plan this should create dashboard and inline reports on the board", async () => {
+    const requests: Array<{ method: string; url: string; body?: Record<string, unknown> }> =
+      [];
+    let inlineReportCount = 0;
     const config: IMixpanelClientConfig = {
       ...baseConfig,
       fetchImpl: createMockFetch((url, init) => {
         requests.push({
           method: init?.method ?? "GET",
           url,
+          body: init?.body
+            ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+            : undefined,
         });
 
         if (init?.method === "POST" && /\/dashboards$/.test(url)) {
@@ -136,26 +215,23 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
         }
 
         if (init?.method === "PATCH" && /\/dashboards\/500$/.test(url)) {
+          inlineReportCount += 1;
+          const name =
+            inlineReportCount === 1 ? "Checkout Retry Views" : "Checkout Retry Funnel";
+
           return new Response(
             JSON.stringify({
               status: "ok",
-              results: { id: 500, title: "Instrument Reports" },
+              results: dashboardWithReport(500, 90000 + inlineReportCount, inlineReportCount, name),
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
         }
 
-        return new Response(
-          JSON.stringify({
-            status: "ok",
-            results: {
-              id: requests.filter((entry) => entry.url.includes("/bookmarks")).length,
-              name: "Report",
-              type: "insights",
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ status: "ok", results: {} }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }),
     };
     const plan: IDashboardPlan = {
@@ -165,14 +241,14 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
           type: "insights",
           name: "Checkout Retry Views",
           description: "Daily views",
-          event: "Checkout Retry Viewed",
+          event: "checkout_retry_viewed",
           reason: "New page",
         },
         {
           type: "funnels",
           name: "Checkout Retry Funnel",
           description: "Retry flow",
-          steps: ["Checkout Started", "Checkout Retry Viewed"],
+          steps: ["checkout_started", "checkout_retry_viewed"],
           reason: "Multi-step flow",
         },
       ],
@@ -184,13 +260,15 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     assert.equal(result.dashboardId, 500);
     assert.equal(result.reports.length, 2);
     assert.match(result.dashboardUrl, /#id=500$/);
-    assert.match(result.reports[0]?.reportUrl, /report-1/);
-    assert.equal(requests.filter((entry) => entry.url.includes("/bookmarks")).length, 2);
+    assert.equal(result.reports[0]?.bookmarkId, 1);
     assert.equal(
-      requests.filter(
-        (entry) => entry.method === "PATCH" && entry.url.includes("/dashboards/500"),
-      ).length,
+      requests.filter((entry) => entry.method === "PATCH" && entry.url.includes("/dashboards/500"))
+        .length,
       2,
+    );
+    assert.equal(
+      requests.some((entry) => entry.method === "POST" && entry.url.includes("/bookmarks")),
+      false,
     );
   });
 
@@ -209,19 +287,16 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
           return new Response(
             JSON.stringify({
               status: "ok",
-              results: { id: 777, title: "Instrument Reports" },
+              results: dashboardWithReport(777, 90001, 1, "Checkout Retry Views"),
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
         }
 
-        return new Response(
-          JSON.stringify({
-            status: "ok",
-            results: { id: 1, name: "Report", type: "insights" },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        );
+        return new Response(JSON.stringify({ status: "ok", results: {} }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }),
     };
     const plan: IDashboardPlan = {
@@ -231,7 +306,7 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
           type: "insights",
           name: "Checkout Retry Views",
           description: "Daily views",
-          event: "Checkout Retry Viewed",
+          event: "checkout_retry_viewed",
           reason: "New page",
         },
       ],

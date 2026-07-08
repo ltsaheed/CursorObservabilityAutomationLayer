@@ -107,8 +107,8 @@ See [instrument-sample-app](https://github.com/YOUR_ORG/instrument-sample-app) f
 Instrument creates **Boards** (Mixpanel dashboards), not Lexicon entries. Each deploy:
 
 1. Uses `MIXPANEL_DASHBOARD_ID` when set, otherwise creates a board named **Instrument Reports** (or `mixpanel.dashboardName` in `instrument.config.json`).
-2. Creates one saved **bookmark** per planned report (insights or funnel).
-3. Adds each bookmark to that board via the Mixpanel App API.
+2. Creates each planned report **inline on that board** via a dashboard content action (reports appear on the board immediately; no manual "Add to board" step).
+3. Uses one API call per report instead of creating orphan bookmarks elsewhere in the project.
 
 Open your project in Mixpanel, then go to **Boards** in the left nav. Direct URL shape:
 
