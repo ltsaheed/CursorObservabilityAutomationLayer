@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 
 import {
   appendRunHistory,
+  buildMixpanelBoardsSection,
   computeOverallStatus,
   parseRunHistoryFromComment,
   renderCommentBody,
@@ -108,5 +109,60 @@ describe("packages/orchestrator/src/github.ts", () => {
     assert.match(body, /Latest run/);
     assert.match(body, /PASSED/);
     assert.match(body, /Workflow #99/);
+  });
+
+  test("given deploy result this should render Mixpanel board links", () => {
+    const body = renderCommentBody({
+      phases: [],
+      summaryLines: [],
+      deployResult: {
+        dashboardId: 11350065,
+        dashboardUrl:
+          "https://eu.mixpanel.com/project/1/view/2/app/boards#id=11350065",
+        createdDashboard: false,
+        reports: [
+          {
+            plan: {
+              type: "insights",
+              name: "Clients Viewed Trend",
+              description: "Daily trend",
+              event: "clients_viewed",
+              reason: "New page",
+            },
+            bookmarkId: 42,
+            reportUrl:
+              "https://eu.mixpanel.com/project/1/view/2/app/boards#id=11350065&editor-card-id=\"report-42\"",
+          },
+        ],
+      },
+    });
+
+    assert.match(body, /Mixpanel boards/);
+    assert.match(body, /Open dashboard/);
+    assert.match(body, /Clients Viewed Trend/);
+  });
+
+  test("given deploy result this should expose board section helper links", () => {
+    const lines = buildMixpanelBoardsSection({
+      dashboardId: 99,
+      dashboardUrl: "https://eu.mixpanel.com/project/1/view/2/app/boards#id=99",
+      createdDashboard: true,
+      reports: [
+        {
+          plan: {
+            type: "insights",
+            name: "Home Viewed Trend",
+            description: "Daily trend",
+            event: "home_viewed",
+            reason: "New page",
+          },
+          bookmarkId: 7,
+          reportUrl: "https://eu.mixpanel.com/project/1/view/2/app/boards#id=99",
+        },
+      ],
+    });
+
+    assert.match(lines.join("\n"), /Open dashboard/);
+    assert.match(lines.join("\n"), /Home Viewed Trend/);
   });
 });

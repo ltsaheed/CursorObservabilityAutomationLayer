@@ -46,6 +46,30 @@ describe("packages/orchestrator/src/reportLoader.ts", () => {
     assert.deepEqual(parsed.report?.newEvents, ["checkout_retry_viewed"]);
   });
 
+  test("given deduplication choices with agent drift this should normalize before parsing", () => {
+    const parsed = parseInstrumentReportJson(
+      JSON.stringify({
+        version: "1",
+        prSummary: "Instrumented clients page",
+        pages: [],
+        newEvents: ["clients_viewed"],
+        filesChanged: ["src/pages/ClientsPage.tsx"],
+        deduplicationDecisions: [
+          { choice: "inline_skip", helper: "trackPageView", reason: "Already covered" },
+          { helper: "trackAction", reason: "Shared helper reused" },
+          { action: "create", helper: "trackClientFilter", reason: "New helper" },
+        ],
+      }),
+    );
+
+    assert.ok(parsed.report);
+    assert.deepEqual(parsed.report?.deduplicationDecisions, [
+      { choice: "inline", helper: "trackPageView", reason: "Already covered" },
+      { choice: "reuse", helper: "trackAction", reason: "Shared helper reused" },
+      { choice: "create", helper: "trackClientFilter", reason: "New helper" },
+    ]);
+  });
+
   test("given report in markdown fence this should extract from agent result", () => {
     const text = `
 Done. Here is the report:

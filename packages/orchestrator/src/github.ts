@@ -1,4 +1,6 @@
-import type { IProgressReporterState, IProgressPhaseState } from "./types.js";
+import type { IDeployDashboardPlanResult } from "@instrument/mixpanel-client";
+
+import type { IDashboardPlan, IProgressReporterState, IProgressPhaseState } from "./types.js";
 import type { IRunHistoryEntry } from "./types.js";
 import { getPhaseDescription } from "./phaseDescriptions.js";
 import { formatPhaseDuration, resolvePhaseAgentLabel } from "./phaseUtils.js";
@@ -208,6 +210,39 @@ export const renderPhaseTimeline = (state: IProgressReporterState): string[] => 
   return lines;
 };
 
+export const buildMixpanelBoardsSection = (
+  deployResult?: IDeployDashboardPlanResult,
+  dashboardPlan?: IDashboardPlan,
+): string[] => {
+  if (deployResult) {
+    const lines = [
+      "### Mixpanel boards",
+      `- **[Open dashboard](${deployResult.dashboardUrl})** (board \`${deployResult.dashboardId}\`)`,
+      "",
+      "**Reports on this board:**",
+    ];
+
+    for (const report of deployResult.reports) {
+      lines.push(`- [${report.plan.name}](${report.reportUrl})`);
+    }
+
+    lines.push("");
+
+    return lines;
+  }
+
+  if (dashboardPlan && dashboardPlan.reports.length > 0) {
+    return [
+      "### Mixpanel boards",
+      "Deploy did not run or was skipped. Planned reports:",
+      ...dashboardPlan.reports.map((report) => `- ${report.name} (${report.type})`),
+      "",
+    ];
+  }
+
+  return [];
+};
+
 export const renderCommentBody = (
   state: IProgressReporterState,
   mixpanel?: { projectId?: string; workspaceId?: string; region?: "us" | "eu" | "in" },
@@ -322,6 +357,8 @@ export const renderCommentBody = (
     }
   }
 
+  lines.push(...buildMixpanelBoardsSection(state.deployResult, state.dashboardPlan));
+
   if (state.dashboardPlan) {
     lines.push("### Dashboard plan");
 
@@ -338,18 +375,7 @@ export const renderCommentBody = (
     lines.push("");
   }
 
-  if (state.deployResult) {
-    lines.push(
-      "### Mixpanel deployment",
-      `- Dashboard: [open](${state.deployResult.dashboardUrl})`,
-    );
-
-    for (const report of state.deployResult.reports) {
-      lines.push(`- ${report.plan.name}: [report](${report.reportUrl})`);
-    }
-
-    lines.push("");
-  } else if (state.report && state.dashboardPlan) {
+  if (state.report && state.dashboardPlan && state.report.newEvents.length > 0 && !state.deployResult) {
     lines.push(
       ...buildMixpanelSectionForComment(
         state.report,

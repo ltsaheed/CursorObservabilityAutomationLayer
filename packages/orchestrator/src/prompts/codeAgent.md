@@ -107,12 +107,19 @@ Helper-only example:
   "filesChanged": [...],
   "helpersUsed": ["trackPageView", "trackAction"],
   "helpersCreated": [],
-  "deduplicationDecisions": [...],
+  "deduplicationDecisions": [
+    { "choice": "reuse", "helper": "trackPageView", "reason": "..." },
+    { "choice": "extend", "helper": "trackAction", "reason": "..." },
+    { "choice": "create", "helper": "trackRetryStep", "reason": "..." },
+    { "choice": "inline", "reason": "One-off event with no shared helper yet" }
+  ],
   "changeBlocks": [...]
 }
 ```
 
 Each page must include `name`, `file`, and `events`. If you omit `name`, it will be derived from `file` — but always include both when possible.
+
+`deduplicationDecisions[].choice` must be exactly one of: `reuse`, `extend`, `create`, `inline`. Do not invent other values (for example `inline_skip`).
 
 ## CheckoutRetryPage scenario
 

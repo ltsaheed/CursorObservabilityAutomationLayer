@@ -81,7 +81,15 @@ export const createPhaseContext = (options: IRunOptions): IPhaseContext => {
 
   return {
     options,
-    reporter: createProgressReporter(saved.progress),
+    reporter: createProgressReporter({
+      ...saved.progress,
+      assessment: saved.progress?.assessment ?? saved.assessment,
+      report: saved.progress?.report ?? saved.report,
+      standardsReview: saved.progress?.standardsReview ?? saved.standardsReview,
+      dashboardPlan: saved.progress?.dashboardPlan ?? saved.dashboardPlan,
+      deployResult: saved.progress?.deployResult ?? saved.deployResult,
+      codeAgentId: saved.progress?.codeAgentId ?? saved.codeAgentId,
+    }),
     config,
     changedFiles: resolveChangedFiles(options, options.config),
     mixpanelEnv: resolveMixpanelEnv(config),

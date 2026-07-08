@@ -113,6 +113,87 @@ const normalizePage = (page: unknown): Record<string, unknown> | null => {
   };
 };
 
+const normalizeDeduplicationChoice = (
+  raw: unknown,
+): "reuse" | "extend" | "create" | "inline" => {
+  if (typeof raw !== "string") {
+    return "reuse";
+  }
+
+  if (raw === "reuse" || raw === "extend" || raw === "create" || raw === "inline") {
+    return raw;
+  }
+
+  if (raw === "inline_skip" || raw === "skip" || raw === "skipped") {
+    return "inline";
+  }
+
+  const normalized = raw.toLowerCase();
+
+  if (normalized.includes("create")) {
+    return "create";
+  }
+
+  if (normalized.includes("extend")) {
+    return "extend";
+  }
+
+  if (normalized.includes("inline")) {
+    return "inline";
+  }
+
+  return "reuse";
+};
+
+const normalizeDeduplicationDecision = (
+  entry: unknown,
+): Record<string, unknown> | null => {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const record = entry as Record<string, unknown>;
+  const reason =
+    typeof record.reason === "string"
+      ? record.reason
+      : typeof record.summary === "string"
+        ? record.summary
+        : typeof record.message === "string"
+          ? record.message
+          : "";
+
+  if (!reason) {
+    return null;
+  }
+
+  const helper =
+    typeof record.helper === "string"
+      ? record.helper
+      : typeof record.name === "string"
+        ? record.name
+        : undefined;
+
+  return {
+    choice: normalizeDeduplicationChoice(
+      record.choice ?? record.action ?? record.decision ?? record.type,
+    ),
+    reason,
+    ...(helper ? { helper } : {}),
+  };
+};
+
+const normalizeDeduplicationDecisions = (
+  entries: unknown,
+): Array<Record<string, unknown>> => {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries
+    .map(normalizeDeduplicationDecision)
+    .filter((entry): entry is Record<string, unknown> => entry !== null);
+};
+
 export const normalizeReportPayload = (
   parsed: Record<string, unknown>,
 ): Record<string, unknown> => {
@@ -144,9 +225,7 @@ export const normalizeReportPayload = (
     helpersCreated: Array.isArray(parsed.helpersCreated)
       ? parsed.helpersCreated.filter((helper): helper is string => typeof helper === "string")
       : [],
-    deduplicationDecisions: Array.isArray(parsed.deduplicationDecisions)
-      ? parsed.deduplicationDecisions
-      : [],
+    deduplicationDecisions: normalizeDeduplicationDecisions(parsed.deduplicationDecisions),
     changeBlocks: Array.isArray(parsed.changeBlocks) ? parsed.changeBlocks : [],
   };
 };

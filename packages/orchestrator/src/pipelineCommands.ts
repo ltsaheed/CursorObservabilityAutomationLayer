@@ -1,4 +1,5 @@
 import { runPipeline } from "./runPipeline.js";
+import { loadPipelineState } from "./pipelineState.js";
 import {
   createPhaseContext,
   runCodeAgentPhase,
@@ -49,7 +50,9 @@ export const runPipelinePhase = async (
       return { deployResult };
     }
     case "comment": {
-      const report = ctx.reporter.getState().report;
+      const saved = loadPipelineState(options.workspaceRoot);
+      const report =
+        ctx.reporter.getState().report ?? saved.report;
       const commentUrl = await runCommentPhase(ctx, report);
       await ctx.reporter.finalize();
 
