@@ -177,6 +177,8 @@ export const runCodeAgent = async (
       },
     });
 
+    reporter.setPhaseCursorAgent("code-agent", agent.agentId, "cloud");
+
     const run = await agent.send(prompt);
     reporter.log("code-agent", `Started Cursor Cloud Agent run ${run.id}`);
 

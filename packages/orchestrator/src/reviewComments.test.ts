@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 
 import {
   buildChangeBlockCommentBody,
+  buildMixpanelSectionForComment,
   buildReviewCommentBody,
   collectReviewCommentTargets,
   resolveEventMixpanelContext,
@@ -138,5 +139,128 @@ describe("packages/orchestrator/src/reviewComments.ts", () => {
     assert.match(body, /checkout retry step/);
     assert.match(body, /Mixpanel/);
     assert.match(body, /Cursor Cloud Agent/);
+  });
+
+  test("given event without dashboard report this should explain events-only destination", () => {
+    const plan: IDashboardPlan = {
+      decisions: [],
+      reports: [
+        {
+          type: "insights",
+          name: "Reports Viewed Trend",
+          description: "Daily trend",
+          event: "reports_viewed",
+          reason: "Page view",
+        },
+      ],
+    };
+    const body = buildChangeBlockCommentBody(
+      {
+        file: "src/pages/ReportsPage.tsx",
+        startLine: 76,
+        endLine: 76,
+        visibility: "[Events only] Filter usage tracked in Events.",
+        events: [
+          {
+            name: "reports_filter_selected",
+            properties: { page: "reports", filter: "all" },
+            trigger: "trackAction on filter click",
+          },
+        ],
+      },
+      new Map([
+        [
+          "reports_filter_selected",
+          resolveEventMixpanelContext("reports_filter_selected", plan, undefined, "123", "456"),
+        ],
+      ]),
+      plan,
+    );
+
+    assert.match(body, /Mixpanel destination/);
+    assert.match(body, /\*\*Events only\*\*/);
+    assert.match(body, /Live View/);
+  });
+
+  test("given event with dashboard report this should show board report destination", () => {
+    const plan: IDashboardPlan = {
+      decisions: [],
+      reports: [
+        {
+          type: "insights",
+          name: "Reports Viewed Trend",
+          description: "Daily trend",
+          event: "reports_viewed",
+          reason: "Page view",
+        },
+      ],
+    };
+    const body = buildChangeBlockCommentBody(
+      {
+        file: "src/pages/ReportsPage.tsx",
+        startLine: 8,
+        endLine: 8,
+        visibility: "[Board report] Daily reports page traffic.",
+        events: [
+          {
+            name: "reports_viewed",
+            properties: { page: "reports" },
+            trigger: "trackPageView on mount",
+          },
+        ],
+      },
+      new Map([
+        [
+          "reports_viewed",
+          resolveEventMixpanelContext("reports_viewed", plan, undefined, "123", "456"),
+        ],
+      ]),
+      plan,
+    );
+
+    assert.match(body, /\*\*Board report\*\*/);
+    assert.match(body, /Reports Viewed Trend/);
+  });
+
+  test("given six events and two board reports this should split mixpanel mapping sections", () => {
+    const plan: IDashboardPlan = {
+      decisions: [],
+      reports: [
+        {
+          type: "insights",
+          name: "Reports Viewed Trend",
+          description: "Daily trend",
+          event: "reports_viewed",
+          reason: "Page view",
+        },
+        {
+          type: "insights",
+          name: "Reports Generate Report Clicked Trend",
+          description: "Daily trend",
+          event: "reports_generate_report_clicked",
+          reason: "Primary action",
+        },
+      ],
+    };
+    const lines = buildMixpanelSectionForComment(
+      {
+        ...sampleReport,
+        newEvents: [
+          "reports_viewed",
+          "reports_filter_selected",
+          "reports_generate_report_clicked",
+        ],
+      },
+      plan,
+      undefined,
+      "123",
+      "456",
+    );
+    const body = lines.join("\n");
+
+    assert.match(body, /Mixpanel links/);
+    assert.match(body, /Board report/);
+    assert.match(body, /Events only/);
+    assert.match(body, /reports_filter_selected/);
   });
 });

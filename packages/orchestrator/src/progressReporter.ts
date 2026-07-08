@@ -242,6 +242,12 @@ export const createProgressReporter = (
       state.codeAgentId = agentId;
     },
 
+    setPhaseCursorAgent: (phase, agentId, runtime) => {
+      const phaseState = getPhaseState(state, phase);
+      phaseState.cursorAgentId = agentId;
+      phaseState.cursorAgentRuntime = runtime;
+    },
+
     appendSummaryLine: (line: string) => {
       state.summaryLines.push(line);
       writeStepSummary(line);

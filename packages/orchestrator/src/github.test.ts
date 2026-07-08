@@ -3,13 +3,14 @@ import { describe, test } from "node:test";
 
 import {
   appendRunHistory,
+  buildInstrumentationEventsSection,
   buildMixpanelBoardsSection,
   computeOverallStatus,
   parseRunHistoryFromComment,
   renderCommentBody,
   renderPhaseTimeline,
 } from "./github.js";
-import type { IProgressReporterState } from "./types.js";
+import type { IDashboardPlan, IProgressReporterState } from "./types.js";
 
 describe("packages/orchestrator/src/github.ts", () => {
   test("given failed phase this should compute failed overall status", () => {
@@ -83,14 +84,62 @@ describe("packages/orchestrator/src/github.ts", () => {
         },
       ],
       summaryLines: [],
-      codeAgentId: "agent-abc",
+      codeAgentId: "bc-e39a7c9c-5321-47a5-9440-7783e721d04f",
     });
     const body = lines.join("\n");
 
     assert.match(body, /Run timeline/);
     assert.match(body, /Pre-scan/);
     assert.match(body, /Code Agent/);
-    assert.match(body, /agent-abc/);
+    assert.match(body, /cursor\.com\/agents\/bc-e39a7c9c/);
+    assert.match(body, /Open in Cursor/);
+  });
+
+  test("given cloud agent id this should link from cursor agents section", () => {
+    const body = renderCommentBody({
+      phases: [
+        {
+          name: "code-agent",
+          status: "complete",
+          startedAt: "2026-07-08T12:00:00.000Z",
+          completedAt: "2026-07-08T12:00:01.000Z",
+          decisions: [],
+          logs: [],
+          streamSnippets: [],
+          cursorAgentId: "bc-abc123-def456",
+          cursorAgentRuntime: "cloud",
+        },
+        {
+          name: "standards-review/attempt-1",
+          status: "complete",
+          startedAt: "2026-07-08T12:01:00.000Z",
+          completedAt: "2026-07-08T12:01:30.000Z",
+          decisions: [],
+          logs: [],
+          streamSnippets: [],
+          cursorAgentId: "local-review-agent-1",
+          cursorAgentRuntime: "local",
+        },
+        {
+          name: "dashboard-agent",
+          status: "complete",
+          startedAt: "2026-07-08T12:02:00.000Z",
+          completedAt: "2026-07-08T12:02:30.000Z",
+          decisions: [],
+          logs: [],
+          streamSnippets: [],
+          cursorAgentId: "bc-dashboard-agent-99",
+          cursorAgentRuntime: "cloud",
+        },
+      ],
+      summaryLines: [],
+      codeAgentId: "bc-abc123-def456",
+    });
+
+    assert.match(body, /Phase run \| Agent/);
+    assert.match(body, /cursor\.com\/agents\/bc-abc123-def456/);
+    assert.match(body, /local-review-agent-1.*local CI run/);
+    assert.match(body, /Mixpanel deploy.*Mixpanel App API/);
   });
 
   test("given run metadata this should render latest run header", () => {
@@ -164,5 +213,57 @@ describe("packages/orchestrator/src/github.ts", () => {
 
     assert.match(lines.join("\n"), /Open dashboard/);
     assert.match(lines.join("\n"), /Home Viewed Trend/);
+  });
+
+  test("given six new events and two dashboard reports this should separate board vs tracked-only", () => {
+    const dashboardPlan: IDashboardPlan = {
+      decisions: [],
+      reports: [
+        {
+          type: "insights",
+          name: "Reports Viewed Trend",
+          description: "Daily trend",
+          event: "reports_viewed",
+          reason: "Page view",
+        },
+        {
+          type: "insights",
+          name: "Reports Generate Report Clicked Trend",
+          description: "Daily trend",
+          event: "reports_generate_report_clicked",
+          reason: "Primary action",
+        },
+      ],
+    };
+    const lines = buildInstrumentationEventsSection(
+      {
+        version: "1",
+        prSummary: "Added 6 events on ReportsPage; 2 prioritized for Mixpanel boards.",
+        pages: [],
+        newEvents: [
+          "reports_viewed",
+          "reports_filter_selected",
+          "reports_report_selected",
+          "reports_generate_report_clicked",
+          "reports_export_pdf_clicked",
+          "reports_schedule_report_clicked",
+        ],
+        filesChanged: ["src/pages/ReportsPage.tsx"],
+        helpersUsed: ["trackPageView", "trackAction"],
+        helpersCreated: [],
+        deduplicationDecisions: [],
+        changeBlocks: [],
+      },
+      dashboardPlan,
+    );
+    const body = lines.join("\n");
+
+    assert.match(body, /Events in this PR/);
+    assert.match(body, /6 events.*in code/);
+    assert.match(body, /2 board reports/);
+    assert.match(body, /4 events only/);
+    assert.match(body, /\*\*Board report\*\* — Reports Viewed Trend/);
+    assert.match(body, /\*\*Events only\*\* — Live View/);
+    assert.match(body, /reports_filter_selected/);
   });
 });

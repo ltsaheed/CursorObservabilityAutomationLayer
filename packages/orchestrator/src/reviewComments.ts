@@ -6,6 +6,14 @@ import {
 } from "@instrument/mixpanel-client";
 import type { IDeployDashboardPlanResult } from "@instrument/mixpanel-client";
 
+import {
+  BOARD_REPORT_DESTINATION_LABEL,
+  EVENTS_ONLY_DESTINATION_LABEL,
+  findPlannedReportForEvent,
+  MAX_DASHBOARD_REPORTS_PER_PR,
+  splitNewEventsByDashboardCoverage,
+} from "./eventPrioritization.js";
+
 import type {
   IDashboardPlan,
   IInstrumentEvent,
@@ -165,6 +173,7 @@ export const resolveEventMixpanelContext = (
 export const buildChangeBlockCommentBody = (
   block: IReviewCommentBlockTarget,
   mixpanelByEvent: Map<string, IEventMixpanelContext>,
+  dashboardPlan?: IDashboardPlan,
 ): string => {
   const eventNames = block.events.map((event) => event.name);
   const titleEvents =
@@ -175,10 +184,31 @@ export const buildChangeBlockCommentBody = (
     REVIEW_MARKER,
     `**Instrument** · ${titleEvents} · _Cursor Cloud Agent_`,
     "",
-    "**What you'll see in analytics**",
-    block.visibility,
-    "",
   ];
+
+  if (block.events.length > 0) {
+    lines.push("**Mixpanel destination**");
+
+    for (const event of block.events) {
+      const plannedReport = findPlannedReportForEvent(event.name, dashboardPlan);
+      const mixpanel = mixpanelByEvent.get(event.name);
+
+      if (plannedReport) {
+        const status = mixpanel?.plannedOnly === false ? "Deployed" : "Planned";
+        lines.push(
+          `- \`${event.name}\` — **${BOARD_REPORT_DESTINATION_LABEL}** (${status}: **${plannedReport.name}**)`,
+        );
+      } else {
+        lines.push(
+          `- \`${event.name}\` — **${EVENTS_ONLY_DESTINATION_LABEL}** (data in Live View / Events; no dashboard chart this PR)`,
+        );
+      }
+    }
+
+    lines.push("");
+  }
+
+  lines.push("**What you'll see in analytics**", block.visibility, "");
 
   if (block.events.length > 0) {
     lines.push("**Events in this change**");
@@ -200,7 +230,7 @@ export const buildChangeBlockCommentBody = (
     lines.push("");
   }
 
-  lines.push("**Where it appears in Mixpanel**");
+  lines.push("**Links**");
 
   if (block.events.length === 0) {
     lines.push("- Helper or module change — no new tracked event in this block.");
@@ -215,15 +245,12 @@ export const buildChangeBlockCommentBody = (
 
     lines.push(`- \`${event.name}\`:`);
 
-    if (mixpanel.reportName) {
-      const status = mixpanel.plannedOnly ? "Planned report" : "Report";
-      lines.push(`  - ${status}: **${mixpanel.reportName}** (${mixpanel.reportType ?? "insights"})`);
-    } else {
-      lines.push("  - No dashboard report mapped yet.");
+    if (mixpanel.reportUrl && !mixpanel.plannedOnly) {
+      lines.push(`  - [Open board report](${mixpanel.reportUrl})`);
     }
 
-    if (mixpanel.reportUrl && !mixpanel.plannedOnly) {
-      lines.push(`  - [Open report](${mixpanel.reportUrl})`);
+    if (mixpanel.dashboardUrl && !mixpanel.plannedOnly) {
+      lines.push(`  - [Open dashboard](${mixpanel.dashboardUrl})`);
     }
 
     if (mixpanel.eventsUrl) {
@@ -260,6 +287,7 @@ export const buildReviewCommentBody = (
       events: [event],
     },
     new Map([[event.name, mixpanel]]),
+    undefined,
   );
 
 const listExistingReviewComments = async (
@@ -357,7 +385,7 @@ export const syncReviewComments = async (options: {
       );
     }
 
-    const body = buildChangeBlockCommentBody(block, mixpanelByEvent);
+    const body = buildChangeBlockCommentBody(block, mixpanelByEvent, state.dashboardPlan);
 
     try {
       await createReviewComment(context, { headSha }, block, body);
@@ -385,32 +413,72 @@ export const buildMixpanelSectionForComment = (
   mixpanelWorkspaceId?: string,
   mixpanelRegion?: IMixpanelRegion,
 ): string[] => {
-  const lines: string[] = ["### Mixpanel mapping", ""];
+  const { withDashboardReport, trackedOnly } = splitNewEventsByDashboardCoverage(
+    report.newEvents,
+    dashboardPlan,
+  );
+  const lines: string[] = [
+    "### Mixpanel links",
+    "",
+    `| Destination | Count |`,
+    `| --- | --- |`,
+    `| **${BOARD_REPORT_DESTINATION_LABEL}** (saved chart on board) | ${withDashboardReport.length} |`,
+    `| **${EVENTS_ONLY_DESTINATION_LABEL}** (Live View / Events only) | ${trackedOnly.length} |`,
+    "",
+  ];
 
-  for (const eventName of report.newEvents) {
-    const mixpanel = resolveEventMixpanelContext(
-      eventName,
-      dashboardPlan,
-      deployResult,
-      mixpanelProjectId,
-      mixpanelWorkspaceId,
-      mixpanelRegion,
+  if (withDashboardReport.length > 0) {
+    lines.push(`#### ${BOARD_REPORT_DESTINATION_LABEL}s`, "");
+
+    for (const eventName of withDashboardReport) {
+      const mixpanel = resolveEventMixpanelContext(
+        eventName,
+        dashboardPlan,
+        deployResult,
+        mixpanelProjectId,
+        mixpanelWorkspaceId,
+        mixpanelRegion,
+      );
+      const plannedReport = findPlannedReportForEvent(eventName, dashboardPlan);
+
+      lines.push(`**\`${eventName}\`** → ${plannedReport?.name ?? mixpanel.reportName ?? "dashboard report"}`);
+
+      if (mixpanel.reportUrl && !mixpanel.plannedOnly) {
+        lines.push(`- [Open board report](${mixpanel.reportUrl})`);
+      } else if (mixpanel.plannedOnly) {
+        lines.push("- Report will appear on the board after deploy completes.");
+      }
+
+      if (mixpanel.eventsUrl) {
+        lines.push(`- [View raw event in Mixpanel](${mixpanel.eventsUrl})`);
+      }
+
+      lines.push("");
+    }
+  }
+
+  if (trackedOnly.length > 0) {
+    lines.push(`#### ${EVENTS_ONLY_DESTINATION_LABEL}`, "");
+    lines.push(
+      `_These events send data to Mixpanel but do not get a saved board chart this PR (limit: ${MAX_DASHBOARD_REPORTS_PER_PR} reports per run)._`,
+      "",
     );
 
-    lines.push(`**\`${eventName}\`**`);
-
-    if (mixpanel.reportName) {
-      lines.push(
-        `- ${mixpanel.plannedOnly ? "Planned" : "Deployed"} report: ${mixpanel.reportName}`,
+    for (const eventName of trackedOnly) {
+      const mixpanel = resolveEventMixpanelContext(
+        eventName,
+        dashboardPlan,
+        deployResult,
+        mixpanelProjectId,
+        mixpanelWorkspaceId,
+        mixpanelRegion,
       );
-    }
 
-    if (mixpanel.reportUrl && !mixpanel.plannedOnly) {
-      lines.push(`- [Report link](${mixpanel.reportUrl})`);
-    }
+      lines.push(`- \`${eventName}\``);
 
-    if (mixpanel.eventsUrl) {
-      lines.push(`- [Event in Mixpanel](${mixpanel.eventsUrl})`);
+      if (mixpanel.eventsUrl) {
+        lines.push(`  - [View in Mixpanel Events](${mixpanel.eventsUrl})`);
+      }
     }
 
     lines.push("");

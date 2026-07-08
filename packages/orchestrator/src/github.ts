@@ -1,7 +1,15 @@
 import type { IDeployDashboardPlanResult } from "@instrument/mixpanel-client";
 
-import type { IDashboardPlan, IProgressReporterState, IProgressPhaseState } from "./types.js";
+import {
+  BOARD_REPORT_DESTINATION_LABEL,
+  EVENTS_ONLY_DESTINATION_LABEL,
+  findPlannedReportForEvent,
+  MAX_DASHBOARD_REPORTS_PER_PR,
+  splitNewEventsByDashboardCoverage,
+} from "./eventPrioritization.js";
+import type { IDashboardPlan, IInstrumentReport, IProgressReporterState, IProgressPhaseState } from "./types.js";
 import type { IRunHistoryEntry } from "./types.js";
+import { formatCursorAgentReference } from "./cursorAgentLinks.js";
 import { getPhaseDescription } from "./phaseDescriptions.js";
 import { formatPhaseDuration, resolvePhaseAgentLabel } from "./phaseUtils.js";
 import { buildMixpanelSectionForComment } from "./reviewComments.js";
@@ -197,7 +205,7 @@ export const renderPhaseTimeline = (state: IProgressReporterState): string[] => 
     const { title, subtitle } = getPhaseDescription(phase.name);
 
     lines.push(
-      `| ${title}<br><sub>${subtitle}</sub> | ${phaseStatusEmoji(phase.status)} ${phase.status} | ${formatPhaseDuration(phase)} | ${resolvePhaseAgentLabel(phase.name, state.codeAgentId)} |`,
+      `| ${title}<br><sub>${subtitle}</sub> | ${phaseStatusEmoji(phase.status)} ${phase.status} | ${formatPhaseDuration(phase)} | ${resolvePhaseAgentLabel(phase.name, state.phases, state.codeAgentId)} |`,
     );
   }
 
@@ -206,6 +214,50 @@ export const renderPhaseTimeline = (state: IProgressReporterState): string[] => 
   for (const phase of state.phases) {
     lines.push(...renderPhaseDetails(phase));
   }
+
+  return lines;
+};
+
+export const buildCursorAgentsSection = (
+  state: IProgressReporterState,
+): string[] => {
+  const rows: string[] = [];
+
+  for (const phase of state.phases) {
+    const agentId =
+      phase.cursorAgentId ??
+      (phase.name === "code-agent" ? state.codeAgentId : undefined);
+
+    if (!agentId) {
+      continue;
+    }
+
+    const { title } = getPhaseDescription(phase.name);
+    const runtime =
+      phase.cursorAgentRuntime ??
+      (agentId.match(/^bc[-_]/i) ? "cloud" : "local");
+
+    rows.push(`| ${title} | ${formatCursorAgentReference(agentId, runtime)} |`);
+  }
+
+  const lines: string[] = [
+    "### Cursor agents",
+    "",
+    "- **Code Agent** — Cursor Cloud Agent on this PR (instrumentation commits + `.instrument/report.json`)",
+    "- **Review Agent** — checks instrumentation against org analytics standards (independent from the Code Agent)",
+    "- **Dashboard Agent** — plans Mixpanel board reports from the instrumentation report",
+    "- **Mixpanel deploy** — Mixpanel App API (not a Cursor agent)",
+    "",
+  ];
+
+  if (rows.length > 0) {
+    lines.push("| Phase run | Agent |", "| --- | --- |", ...rows, "");
+  }
+
+  lines.push(
+    "_Cloud agent links open on [cursor.com/agents](https://cursor.com/agents) (requires the Cursor account that launched the agent). Review Agent runs locally in CI when checking the Actions checkout — no web dashboard link._",
+    "",
+  );
 
   return lines;
 };
@@ -243,6 +295,61 @@ export const buildMixpanelBoardsSection = (
   return [];
 };
 
+export const buildInstrumentationEventsSection = (
+  report: IInstrumentReport,
+  dashboardPlan?: IDashboardPlan,
+): string[] => {
+  if (report.newEvents.length === 0) {
+    return ["**No new events** in this PR.", ""];
+  }
+
+  const { withDashboardReport, trackedOnly } = splitNewEventsByDashboardCoverage(
+    report.newEvents,
+    dashboardPlan,
+  );
+  const lines: string[] = [
+    "### Events in this PR",
+    "",
+    `**${report.newEvents.length} events** in code · **${withDashboardReport.length} ${BOARD_REPORT_DESTINATION_LABEL.toLowerCase()}s** (max ${MAX_DASHBOARD_REPORTS_PER_PR}) · **${trackedOnly.length} ${EVENTS_ONLY_DESTINATION_LABEL.toLowerCase()}**`,
+    "",
+    "> Every event sends data to Mixpanel when users interact with the app.",
+    "> **Board report** = a saved chart on your Instrument Mixpanel dashboard.",
+    "> **Events only** = data appears in Mixpanel **Events** / **Live View** — no chart is created this PR.",
+    "",
+    "| Event | Destination |",
+    "| --- | --- |",
+  ];
+
+  for (const eventName of report.newEvents) {
+    const plannedReport = findPlannedReportForEvent(eventName, dashboardPlan);
+
+    if (plannedReport) {
+      lines.push(
+        `| \`${eventName}\` | **${BOARD_REPORT_DESTINATION_LABEL}** — ${plannedReport.name} |`,
+      );
+    } else {
+      lines.push(
+        `| \`${eventName}\` | **${EVENTS_ONLY_DESTINATION_LABEL}** — Live View / Events (no chart this PR) |`,
+      );
+    }
+  }
+
+  lines.push("");
+
+  if (trackedOnly.length > 0) {
+    lines.push(
+      `<details><summary>Why ${trackedOnly.length} event(s) are "${EVENTS_ONLY_DESTINATION_LABEL}"</summary>`,
+      "",
+      `Instrument creates at most ${MAX_DASHBOARD_REPORTS_PER_PR} board reports per PR (Mixpanel free-tier limit). Page views and high-intent actions are prioritized for charts; the remaining events are still tracked in code and queryable in Mixpanel Events.`,
+      "",
+      "</details>",
+      "",
+    );
+  }
+
+  return lines;
+};
+
 export const renderCommentBody = (
   state: IProgressReporterState,
   mixpanel?: { projectId?: string; workspaceId?: string; region?: "us" | "eu" | "in" },
@@ -268,20 +375,7 @@ export const renderCommentBody = (
     lines.push("");
   }
 
-  lines.push(
-    "### Cursor agents",
-    "- **Code Agent** — Cursor Cloud Agent on this PR (instrumentation commits + `.instrument/report.json`)",
-  );
-
-  if (state.codeAgentId) {
-    lines.push(`- Cloud Agent ID: \`${state.codeAgentId}\``);
-  }
-
-  lines.push(
-    "- **Review Agent** — checks instrumentation against org analytics standards (independent from the Code Agent)",
-    "- **Dashboard Agent** — Cursor SDK Mixpanel report planning",
-    "",
-  );
+  lines.push(...buildCursorAgentsSection(state));
 
   if (state.assessment) {
     lines.push("### Pre-scan", state.assessment.summary, "");
@@ -301,11 +395,7 @@ export const renderCommentBody = (
 
   if (state.report) {
     lines.push("### Instrumentation summary", state.report.prSummary, "");
-    lines.push("**New events**");
-
-    for (const eventName of state.report.newEvents) {
-      lines.push(`- \`${eventName}\``);
-    }
+    lines.push(...buildInstrumentationEventsSection(state.report, state.dashboardPlan));
 
     if (state.report.helpersUsed.length > 0) {
       lines.push("**Helpers used**");
@@ -360,7 +450,11 @@ export const renderCommentBody = (
   lines.push(...buildMixpanelBoardsSection(state.deployResult, state.dashboardPlan));
 
   if (state.dashboardPlan) {
-    lines.push("### Dashboard plan");
+    lines.push(
+      "### Dashboard plan",
+      `_Instrument deploys up to ${MAX_DASHBOARD_REPORTS_PER_PR} Mixpanel board reports per PR. Only the reports below are created on the board._`,
+      "",
+    );
 
     for (const decision of state.dashboardPlan.decisions) {
       lines.push(`- ${decision.summary}: ${decision.reason}`);
@@ -375,7 +469,7 @@ export const renderCommentBody = (
     lines.push("");
   }
 
-  if (state.report && state.dashboardPlan && state.report.newEvents.length > 0 && !state.deployResult) {
+  if (state.report && state.report.newEvents.length > 0) {
     lines.push(
       ...buildMixpanelSectionForComment(
         state.report,

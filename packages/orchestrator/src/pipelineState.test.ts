@@ -27,10 +27,33 @@ describe("packages/orchestrator/src/phaseUtils.ts", () => {
     assert.equal(formatPhaseDuration(phase), "4s");
   });
 
-  test("given code agent resume phase this should include agent id label", () => {
-    const label = resolvePhaseAgentLabel("code-agent/resume-1", "agent-123");
+  test("given code agent resume phase this should include linked agent id label", () => {
+    const label = resolvePhaseAgentLabel(
+      "code-agent/resume-1",
+      [
+        {
+          name: "code-agent/resume-1",
+          status: "complete",
+          startedAt: "2026-07-08T12:00:00.000Z",
+          completedAt: "2026-07-08T12:00:01.000Z",
+          decisions: [],
+          logs: [],
+          streamSnippets: [],
+          cursorAgentId: "bc-e39a7c9c-5321-47a5-9440-7783e721d04f",
+          cursorAgentRuntime: "cloud",
+        },
+      ],
+      "bc-e39a7c9c-5321-47a5-9440-7783e721d04f",
+    );
 
-    assert.match(label, /agent-123/);
+    assert.match(label, /cursor\.com\/agents/);
+    assert.doesNotMatch(label, /resumed/);
+  });
+
+  test("given mixpanel deploy phase this should label mixpanel api", () => {
+    const label = resolvePhaseAgentLabel("mixpanel-deploy", [], undefined);
+
+    assert.equal(label, "Mixpanel API");
   });
 });
 

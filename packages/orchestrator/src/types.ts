@@ -271,6 +271,8 @@ export interface IProgressPhaseState {
   decisions: IProgressDecision[];
   logs: IProgressLogEntry[];
   streamSnippets: IProgressStreamSnippet[];
+  cursorAgentId?: string;
+  cursorAgentRuntime?: "cloud" | "local";
 }
 
 export interface IProgressReporterState {
@@ -315,6 +317,11 @@ export interface IProgressReporter {
   setRunMetadata: (metadata: IRunMetadata) => void;
   setRunHistory: (history: IRunHistoryEntry[]) => void;
   setCodeAgentId: (agentId: string) => void;
+  setPhaseCursorAgent: (
+    phase: IProgressSubPhase,
+    agentId: string,
+    runtime: "cloud" | "local",
+  ) => void;
   appendSummaryLine: (line: string) => void;
   getState: () => IProgressReporterState;
   finalize: () => Promise<void>;

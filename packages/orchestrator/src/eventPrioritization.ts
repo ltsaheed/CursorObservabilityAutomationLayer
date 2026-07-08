@@ -1,4 +1,71 @@
-import type { IInstrumentEvent, IInstrumentReport } from "./types.js";
+import type {
+  IDashboardPlan,
+  IInstrumentEvent,
+  IInstrumentReport,
+  IReportPlan,
+} from "./types.js";
+
+export const MAX_DASHBOARD_REPORTS_PER_PR = 2;
+
+export const BOARD_REPORT_DESTINATION_LABEL = "Board report";
+export const EVENTS_ONLY_DESTINATION_LABEL = "Events only";
+
+export interface IDashboardEventCoverage {
+  withDashboardReport: string[];
+  trackedOnly: string[];
+}
+
+export const findPlannedReportForEvent = (
+  eventName: string,
+  plan?: IDashboardPlan,
+): IReportPlan | undefined => {
+  return plan?.reports.find((report) => {
+    if (report.type === "insights") {
+      return report.event === eventName;
+    }
+
+    return report.steps.includes(eventName);
+  });
+};
+
+export const isEventOnDashboardPlan = (
+  eventName: string,
+  plan?: IDashboardPlan,
+): boolean => {
+  return findPlannedReportForEvent(eventName, plan) !== undefined;
+};
+
+export const collectEventsFromDashboardPlan = (plan?: IDashboardPlan): string[] => {
+  if (!plan) {
+    return [];
+  }
+
+  const events = new Set<string>();
+
+  for (const report of plan.reports) {
+    if (report.type === "insights") {
+      events.add(report.event);
+    } else {
+      for (const step of report.steps) {
+        events.add(step);
+      }
+    }
+  }
+
+  return [...events];
+};
+
+export const splitNewEventsByDashboardCoverage = (
+  newEvents: string[],
+  dashboardPlan?: IDashboardPlan,
+): IDashboardEventCoverage => {
+  const covered = new Set(collectEventsFromDashboardPlan(dashboardPlan));
+
+  return {
+    withDashboardReport: newEvents.filter((eventName) => covered.has(eventName)),
+    trackedOnly: newEvents.filter((eventName) => !covered.has(eventName)),
+  };
+};
 
 export interface IEventPriorityRank {
   eventName: string;

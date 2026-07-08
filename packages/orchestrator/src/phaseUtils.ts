@@ -1,4 +1,8 @@
 import type { IProgressPhaseState } from "./types.js";
+import {
+  formatCursorAgentReference,
+  formatCursorCloudAgentLink,
+} from "./cursorAgentLinks.js";
 
 export const formatPhaseDuration = (phase: IProgressPhaseState): string => {
   if (!phase.completedAt) {
@@ -26,14 +30,28 @@ export const formatPhaseDuration = (phase: IProgressPhaseState): string => {
 
 export const resolvePhaseAgentLabel = (
   phaseName: string,
+  phases: IProgressPhaseState[],
   codeAgentId?: string,
 ): string => {
+  const phase = phases.find((entry) => entry.name === phaseName);
+
+  if (phase?.cursorAgentId) {
+    return formatCursorAgentReference(
+      phase.cursorAgentId,
+      phase.cursorAgentRuntime ?? "cloud",
+    );
+  }
+
   if (phaseName.startsWith("code-agent/resume-") && codeAgentId) {
-    return `resumed \`${codeAgentId}\``;
+    return `resumed ${formatCursorCloudAgentLink(codeAgentId)}`;
   }
 
   if (phaseName === "code-agent" && codeAgentId) {
-    return `\`${codeAgentId}\``;
+    return formatCursorCloudAgentLink(codeAgentId);
+  }
+
+  if (phaseName === "mixpanel-deploy") {
+    return "Mixpanel API";
   }
 
   return "—";

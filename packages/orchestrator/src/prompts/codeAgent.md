@@ -35,9 +35,18 @@ Each event in `pages[].events` must include:
 | `trigger` | yes | what fires the event (e.g. `trackPageView on mount`) |
 | `line` | yes | line number in the changed file where instrumentation was added |
 | `justification` | yes | 1-2 sentences for **standards review**: why this event exists and which helper/pattern was chosen (technical) |
-| `visibility` | yes | 1-2 sentences for **PR reviewers**: what product/growth teams will be able to see in Mixpanel because of this event |
+| `visibility` | yes | 1-2 sentences for **PR reviewers**: what product/growth teams can query in Mixpanel for this event. **Must start with** `[Board report]` or `[Events only]` (see below). |
 
-Example event entry:
+**Mixpanel dashboard limit:** Instrument adds **all** new events to the app code, but creates **at most 2 Mixpanel board reports per PR** (page views and high-intent actions are prioritized).
+
+Every event's `visibility` field **must begin** with one of these tags:
+
+- **`[Board report]`** — for the ~2 events most likely to get a saved chart (typically page view + one primary action). Describe the trend or funnel stakeholders will see on the board.
+- **`[Events only]`** — for all other instrumented events. Say what question the event answers in Mixpanel **Events / Live View** and that **no dashboard chart** is created for it this PR.
+
+In `prSummary`, use the same vocabulary: how many events in code, how many **board reports**, how many **events only** (e.g. "Added 6 events in code: 2 board reports, 4 events only.").
+
+Example event entry (board report):
 
 ```json
 {
@@ -46,7 +55,20 @@ Example event entry:
   "trigger": "trackPageView on mount",
   "line": 8,
   "justification": "ADR-031 page view on mount; reused trackPageView to avoid duplicating useEffect+track.",
-  "visibility": "You'll see how many users land on the checkout retry step each day and whether retry traffic is growing or shrinking."
+  "visibility": "[Board report] You'll see how many users land on the checkout retry step each day and whether retry traffic is growing or shrinking."
+}
+```
+
+Example event entry (events only):
+
+```json
+{
+  "name": "checkout_retry_back_clicked",
+  "properties": { "page": "checkout_retry", "cta": "back_to_checkout" },
+  "trigger": "trackAction in back link onClick",
+  "line": 24,
+  "justification": "Back navigation uses trackAction per ADR-031.",
+  "visibility": "[Events only] Tracked in Mixpanel Events so you can filter users who abandon retry; no dashboard chart is created for this event this PR."
 }
 ```
 
@@ -63,7 +85,7 @@ Each block in `changeBlocks` must include:
 | `justification` | no | optional technical note for standards review (helper choice, ADR compliance) |
 | `events` | no | event names from `pages[].events` covered by this block (empty for helper-only blocks) |
 
-Write `visibility` for a **customer / product stakeholder** reading the PR: focus on funnel visibility, conversion, drop-off, trends, and which Mixpanel reports will light up — not implementation details.
+Write `visibility` for a **customer / product stakeholder** reading the PR: focus on funnel visibility, conversion, drop-off, and trends. Start each event's `visibility` with `[Board report]` or `[Events only]` so reviewers immediately know whether a Mixpanel dashboard chart is created for that event.
 
 Example: mount tracking on lines 8-11 and a click handler on line 24 → **two** `changeBlocks` entries on the same file.
 

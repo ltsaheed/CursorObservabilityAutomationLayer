@@ -124,14 +124,41 @@ export const runReviewAgent = async (
 
   const prompt = `${loadPrompt()}\n\n## Assessment\n${JSON.stringify(assessment, null, 2)}\n\n## Report\n${JSON.stringify(report, null, 2)}\n\n## Files\n${fileBlocks}`;
 
-  const result = await Agent.prompt(prompt, {
-    apiKey: process.env.CURSOR_API_KEY,
-    model: { id: "composer-2.5" },
-    local: { cwd: workspaceRoot },
-  });
+  try {
+    await using agent = await Agent.create({
+      apiKey: process.env.CURSOR_API_KEY,
+      model: { id: "composer-2.5" },
+      local: { cwd: workspaceRoot },
+    });
 
-  if (result.status === "error" || !result.result) {
-    reporter.log(phase, "Review agent run failed", "error");
+    const run = await agent.send(prompt);
+    reporter.log(phase, `Started review agent run ${run.id}`);
+    const result = await run.wait();
+    reporter.setPhaseCursorAgent(phase, agent.agentId, "local");
+
+    if (result.status === "error" || !result.result) {
+      reporter.log(phase, "Review agent run failed", "error");
+
+      return standardsReviewResultSchema.parse({
+        passed: false,
+        issues: [],
+        summary: "Review agent failed to produce a result.",
+        decisions: [],
+      });
+    }
+
+    return (
+      extractJsonFromText(result.result) ??
+      standardsReviewResultSchema.parse({
+        passed: false,
+        issues: [],
+        summary: "Review agent returned invalid JSON.",
+        decisions: [],
+      })
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Review agent failed";
+    reporter.log(phase, message, "error");
 
     return standardsReviewResultSchema.parse({
       passed: false,
@@ -140,14 +167,4 @@ export const runReviewAgent = async (
       decisions: [],
     });
   }
-
-  return (
-    extractJsonFromText(result.result) ??
-    standardsReviewResultSchema.parse({
-      passed: false,
-      issues: [],
-      summary: "Review agent returned invalid JSON.",
-      decisions: [],
-    })
-  );
 };

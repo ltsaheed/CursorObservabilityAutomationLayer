@@ -62,6 +62,7 @@ const resumeCodeAgentFix = async (
 
   try {
     await using agent = await Agent.resume(codeAgentId, { apiKey });
+    reporter.setPhaseCursorAgent(resumePhase, codeAgentId, "cloud");
     const run = await agent.send(fixPrompt);
     reporter.log(resumePhase, `Started fix run ${run.id}`);
 

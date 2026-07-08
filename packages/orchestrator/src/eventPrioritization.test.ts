@@ -4,8 +4,9 @@ import { describe, test } from "node:test";
 import {
   rankNewEventsForReporting,
   selectPrioritizedEvents,
+  splitNewEventsByDashboardCoverage,
 } from "./eventPrioritization.js";
-import type { IInstrumentReport } from "./types.js";
+import type { IDashboardPlan, IInstrumentReport } from "./types.js";
 
 const multiEventReport: IInstrumentReport = {
   version: "1",
@@ -69,5 +70,42 @@ describe("packages/orchestrator/src/eventPrioritization.ts", () => {
     const { events } = selectPrioritizedEvents(multiEventReport, 2);
 
     assert.deepEqual(events, ["checkout_retry_viewed", "checkout_retry_submit_clicked"]);
+  });
+
+  test("given dashboard plan with two reports this should split covered vs tracked-only events", () => {
+    const plan: IDashboardPlan = {
+      decisions: [],
+      reports: [
+        {
+          type: "insights",
+          name: "Reports Viewed Trend",
+          description: "Daily trend",
+          event: "reports_viewed",
+          reason: "Page view",
+        },
+        {
+          type: "insights",
+          name: "Reports Generate Report Clicked Trend",
+          description: "Daily trend",
+          event: "reports_generate_report_clicked",
+          reason: "Primary action",
+        },
+      ],
+    };
+    const newEvents = [
+      "reports_viewed",
+      "reports_filter_selected",
+      "reports_report_selected",
+      "reports_generate_report_clicked",
+      "reports_export_pdf_clicked",
+      "reports_schedule_report_clicked",
+    ];
+    const split = splitNewEventsByDashboardCoverage(newEvents, plan);
+
+    assert.deepEqual(split.withDashboardReport, [
+      "reports_viewed",
+      "reports_generate_report_clicked",
+    ]);
+    assert.equal(split.trackedOnly.length, 4);
   });
 });
