@@ -2,6 +2,7 @@ import {
   buildDashboardUrl,
   buildMixpanelEventsUrl,
   buildMixpanelReportUrl,
+  type IMixpanelRegion,
 } from "@instrument/mixpanel-client";
 import type { IDeployDashboardPlanResult } from "@instrument/mixpanel-client";
 
@@ -88,6 +89,7 @@ export const resolveEventMixpanelContext = (
   deployResult?: IDeployDashboardPlanResult,
   mixpanelProjectId?: string,
   mixpanelWorkspaceId?: string,
+  mixpanelRegion?: IMixpanelRegion,
 ): IEventMixpanelContext => {
   const plannedReport = dashboardPlan?.reports.find((report) => {
     if (report.type === "insights") {
@@ -107,7 +109,12 @@ export const resolveEventMixpanelContext = (
 
   const eventsUrl =
     mixpanelProjectId && mixpanelWorkspaceId
-      ? buildMixpanelEventsUrl(mixpanelProjectId, mixpanelWorkspaceId, eventName)
+      ? buildMixpanelEventsUrl(
+          mixpanelProjectId,
+          mixpanelWorkspaceId,
+          eventName,
+          mixpanelRegion,
+        )
       : undefined;
 
   if (deployedReport && deployResult) {
@@ -132,6 +139,7 @@ export const resolveEventMixpanelContext = (
               mixpanelWorkspaceId,
               deployResult.dashboardId,
               0,
+              mixpanelRegion,
             )
           : undefined,
       dashboardUrl:
@@ -140,6 +148,7 @@ export const resolveEventMixpanelContext = (
               mixpanelProjectId,
               mixpanelWorkspaceId,
               deployResult.dashboardId,
+              mixpanelRegion,
             )
           : undefined,
       eventsUrl,
@@ -304,8 +313,10 @@ export const syncReviewComments = async (options: {
   state: IProgressReporterState;
   mixpanelProjectId?: string;
   mixpanelWorkspaceId?: string;
+  mixpanelRegion?: IMixpanelRegion;
 }): Promise<{ posted: number; skipped: number }> => {
-  const { context, state, mixpanelProjectId, mixpanelWorkspaceId } = options;
+  const { context, state, mixpanelProjectId, mixpanelWorkspaceId, mixpanelRegion } =
+    options;
 
   if (!state.report) {
     return { posted: 0, skipped: 0 };
@@ -341,6 +352,7 @@ export const syncReviewComments = async (options: {
           state.deployResult,
           mixpanelProjectId,
           mixpanelWorkspaceId,
+          mixpanelRegion,
         ),
       );
     }
@@ -371,6 +383,7 @@ export const buildMixpanelSectionForComment = (
   deployResult?: IDeployDashboardPlanResult,
   mixpanelProjectId?: string,
   mixpanelWorkspaceId?: string,
+  mixpanelRegion?: IMixpanelRegion,
 ): string[] => {
   const lines: string[] = ["### Mixpanel mapping", ""];
 
@@ -381,6 +394,7 @@ export const buildMixpanelSectionForComment = (
       deployResult,
       mixpanelProjectId,
       mixpanelWorkspaceId,
+      mixpanelRegion,
     );
 
     lines.push(`**\`${eventName}\`**`);

@@ -94,6 +94,7 @@ export const runCommentPhase = async (
     const commentUrl = await syncPrComment(githubContext, reporter.getState(), {
       projectId: mixpanelEnv?.projectId,
       workspaceId: mixpanelEnv?.workspaceId,
+      region: mixpanelEnv?.region,
     });
 
     reporter.decision(
@@ -109,6 +110,7 @@ export const runCommentPhase = async (
           state: reporter.getState(),
           mixpanelProjectId: mixpanelEnv?.projectId,
           mixpanelWorkspaceId: mixpanelEnv?.workspaceId,
+          mixpanelRegion: mixpanelEnv?.region,
         });
 
         if (posted > 0) {

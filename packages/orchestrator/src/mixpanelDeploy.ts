@@ -49,6 +49,7 @@ export const runMixpanelDeploy = async (
       projectId: envConfig.projectId,
       workspaceId: envConfig.workspaceId,
       dashboardId: envConfig.dashboardId,
+      region: envConfig.region,
     },
     plan,
     dashboardName: dashboardName ?? "Instrument Reports",

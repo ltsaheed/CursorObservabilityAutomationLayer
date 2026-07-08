@@ -1,6 +1,8 @@
+import { getMixpanelEndpoints, resolveMixpanelRegion } from "./endpoints.js";
 import type { IMixpanelApiResponse, IMixpanelClientConfig } from "./types.js";
 
-export const DEFAULT_MIXPANEL_APP_API_BASE = "https://mixpanel.com/api/app/";
+export const DEFAULT_MIXPANEL_APP_API_BASE =
+  getMixpanelEndpoints().apiBase;
 
 export class MixpanelAppApiError extends Error {
   readonly status: number;
@@ -64,7 +66,9 @@ export const createMixpanelHttpClient = (
   config: IMixpanelClientConfig,
 ): IMixpanelHttpClient => {
   const fetchImpl = config.fetchImpl ?? fetch;
-  const baseUrl = config.baseUrl ?? DEFAULT_MIXPANEL_APP_API_BASE;
+  const baseUrl =
+    config.baseUrl ??
+    getMixpanelEndpoints(resolveMixpanelRegion(config.region)).apiBase;
   const authHeader = buildAuthHeader(
     config.serviceAccountUsername,
     config.serviceAccountSecret,
@@ -87,13 +91,19 @@ export const createMixpanelHttpClient = (
     const responseBody = await parseJsonBody(response);
 
     if (!response.ok) {
-      const message =
+      const apiError =
         typeof responseBody === "object" &&
         responseBody !== null &&
         "error" in responseBody &&
         typeof (responseBody as { error?: string }).error === "string"
           ? (responseBody as { error: string }).error
-          : `Mixpanel App API request failed with status ${response.status}`;
+          : typeof responseBody === "string" && responseBody
+            ? responseBody
+            : `Mixpanel App API request failed with status ${response.status}`;
+      const message =
+        response.status === 404
+          ? `${apiError} (POST ${url}). Check MIXPANEL_PROJECT_ID, MIXPANEL_WORKSPACE_ID, MIXPANEL_DASHBOARD_ID (if set), and MIXPANEL_REGION (use us for mixpanel.com projects). The workspace ID is the number after /view/ in your Mixpanel URL. Confirm the service account can access that workspace.`
+          : apiError;
 
       throw new MixpanelAppApiError(message, response.status, responseBody);
     }

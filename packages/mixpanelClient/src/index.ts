@@ -7,6 +7,13 @@ export {
 } from "./client.js";
 export type { IMixpanelHttpClient } from "./client.js";
 export {
+  DEFAULT_MIXPANEL_REGION,
+  MIXPANEL_ENDPOINTS,
+  getMixpanelEndpoints,
+  resolveMixpanelRegion,
+} from "./endpoints.js";
+export type { IMixpanelEndpoints, IMixpanelRegion } from "./endpoints.js";
+export {
   buildBookmarkParams,
   buildFunnelsBookmarkParams,
   buildInsightsBookmarkParams,

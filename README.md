@@ -97,7 +97,18 @@ See [instrument-sample-app](https://github.com/YOUR_ORG/instrument-sample-app) f
 
 - `MIXPANEL_PROJECT_ID`
 - `MIXPANEL_WORKSPACE_ID`
+- `MIXPANEL_REGION` (`us` or `in` only if your Mixpanel URL starts with `mixpanel.com` or `in.mixpanel.com`; defaults to EU)
 - `MIXPANEL_DASHBOARD_ID` (optional)
+
+**Not required for deploy:** Mixpanel project token and API secret. Those are for client-side event tracking in your app (for example `VITE_MIXPANEL_TOKEN`), not for Instrument's dashboard deploy step.
+
+**Finding IDs:** Open Mixpanel and copy the numbers from the URL:
+
+`https://eu.mixpanel.com/project/<MIXPANEL_PROJECT_ID>/view/<MIXPANEL_WORKSPACE_ID>/app/boards`
+
+For US projects use `https://mixpanel.com/project/...` and set `MIXPANEL_REGION=us`.
+
+Grant the service account access to the project and workspace in Mixpanel org settings.
 
 ## Configuration
 

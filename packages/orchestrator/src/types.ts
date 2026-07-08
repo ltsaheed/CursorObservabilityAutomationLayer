@@ -231,6 +231,7 @@ export const mixpanelEnvConfigSchema = z.object({
   projectId: z.string(),
   workspaceId: z.string(),
   dashboardId: z.string().optional(),
+  region: z.enum(["us", "eu", "in"]).optional(),
 });
 
 export type IMixpanelEnvConfig = z.infer<typeof mixpanelEnvConfigSchema>;

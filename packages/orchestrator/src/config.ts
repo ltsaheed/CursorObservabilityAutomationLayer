@@ -14,6 +14,7 @@ const MIXPANEL_ENV_KEYS = {
   projectId: "MIXPANEL_PROJECT_ID",
   workspaceId: "MIXPANEL_WORKSPACE_ID",
   dashboardId: "MIXPANEL_DASHBOARD_ID",
+  region: "MIXPANEL_REGION",
 } as const;
 
 export const loadInstrumentConfig = (configPath: string): IInstrumentConfig => {
@@ -33,6 +34,7 @@ export const resolveMixpanelEnv = (
     projectId: process.env[MIXPANEL_ENV_KEYS.projectId],
     workspaceId: process.env[MIXPANEL_ENV_KEYS.workspaceId],
     dashboardId: process.env[MIXPANEL_ENV_KEYS.dashboardId],
+    region: process.env[MIXPANEL_ENV_KEYS.region],
   };
 
   const hasRequired =
@@ -51,6 +53,10 @@ export const resolveMixpanelEnv = (
     projectId: envValues.projectId,
     workspaceId: envValues.workspaceId,
     dashboardId: envValues.dashboardId,
+    region:
+      envValues.region === "us" || envValues.region === "in"
+        ? envValues.region
+        : undefined,
   });
 };
 

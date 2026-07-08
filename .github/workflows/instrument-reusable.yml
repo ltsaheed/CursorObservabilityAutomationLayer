@@ -50,6 +50,8 @@ on:
         required: false
       MIXPANEL_DASHBOARD_ID:
         required: false
+      MIXPANEL_REGION:
+        required: false
 
 jobs:
   instrument:
@@ -219,6 +221,7 @@ jobs:
           MIXPANEL_PROJECT_ID: ${{ secrets.MIXPANEL_PROJECT_ID }}
           MIXPANEL_WORKSPACE_ID: ${{ secrets.MIXPANEL_WORKSPACE_ID }}
           MIXPANEL_DASHBOARD_ID: ${{ secrets.MIXPANEL_DASHBOARD_ID }}
+          MIXPANEL_REGION: ${{ secrets.MIXPANEL_REGION }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd .instrument/tooling

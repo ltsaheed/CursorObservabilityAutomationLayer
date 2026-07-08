@@ -1,9 +1,12 @@
+import type { IMixpanelRegion } from "./endpoints.js";
+
 export interface IMixpanelEnvConfig {
   serviceAccountUsername: string;
   serviceAccountSecret: string;
   projectId: string;
   workspaceId: string;
   dashboardId?: string;
+  region?: IMixpanelRegion;
 }
 
 export interface IMixpanelApiPathConfig {

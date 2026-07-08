@@ -210,7 +210,7 @@ export const renderPhaseTimeline = (state: IProgressReporterState): string[] => 
 
 export const renderCommentBody = (
   state: IProgressReporterState,
-  mixpanel?: { projectId?: string; workspaceId?: string },
+  mixpanel?: { projectId?: string; workspaceId?: string; region?: "us" | "eu" | "in" },
 ): string => {
   const lines: string[] = [BOT_MARKER, "## Instrument PR Report", ""];
 
@@ -357,6 +357,7 @@ export const renderCommentBody = (
         state.deployResult,
         mixpanel?.projectId,
         mixpanel?.workspaceId,
+        mixpanel?.region,
       ),
     );
   }
@@ -452,7 +453,7 @@ export const updateComment = async (
 export const syncPrComment = async (
   context: IGitHubCommentContext,
   state: IProgressReporterState,
-  mixpanel?: { projectId?: string; workspaceId?: string },
+  mixpanel?: { projectId?: string; workspaceId?: string; region?: "us" | "eu" | "in" },
 ): Promise<string> => {
   const { commentId, url, previousBody } = await findOrCreateComment(context, BOT_MARKER);
 

@@ -9,7 +9,7 @@ describe("packages/mixpanelClient/src/urls.ts", () => {
 
     assert.equal(
       url,
-      'https://mixpanel.com/project/12345/view/67890/app/boards#id=111&editor-card-id="report-222"',
+      'https://eu.mixpanel.com/project/12345/view/67890/app/boards#id=111&editor-card-id="report-222"',
     );
   });
 
@@ -18,7 +18,7 @@ describe("packages/mixpanelClient/src/urls.ts", () => {
 
     assert.equal(
       url,
-      "https://mixpanel.com/project/12345/view/67890/app/boards#id=111",
+      "https://eu.mixpanel.com/project/12345/view/67890/app/boards#id=111",
     );
   });
 
@@ -27,7 +27,25 @@ describe("packages/mixpanelClient/src/urls.ts", () => {
 
     assert.equal(
       url,
-      "https://mixpanel.com/project/12345/view/67890/app/events#checkout_retry_viewed",
+      "https://eu.mixpanel.com/project/12345/view/67890/app/events#checkout_retry_viewed",
+    );
+  });
+
+  test("given us region this should build us dashboard links", () => {
+    const url = buildDashboardUrl("4041737", "4537984", 11349882, "us");
+
+    assert.equal(
+      url,
+      "https://mixpanel.com/project/4041737/view/4537984/app/boards#id=11349882",
+    );
+  });
+
+  test("given eu region this should build regional dashboard links", () => {
+    const url = buildDashboardUrl("4041737", "4537984", 11349882, "eu");
+
+    assert.equal(
+      url,
+      "https://eu.mixpanel.com/project/4041737/view/4537984/app/boards#id=11349882",
     );
   });
 });

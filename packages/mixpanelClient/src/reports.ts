@@ -16,6 +16,7 @@ import type {
   IMixpanelDashboard,
   IReportPlan,
 } from "./types.js";
+import { resolveMixpanelRegion } from "./endpoints.js";
 import { buildDashboardUrl, buildMixpanelReportUrl } from "./urls.js";
 
 const DEFAULT_DASHBOARD_NAME = "Instrument Reports";
@@ -141,6 +142,7 @@ export const deployDashboardPlan = async (
     dashboardName = DEFAULT_DASHBOARD_NAME,
     dryRun = false,
   } = options;
+  const region = resolveMixpanelRegion(config.region);
   let dashboardId = config.dashboardId ? Number(config.dashboardId) : undefined;
   let createdDashboard = false;
 
@@ -153,6 +155,7 @@ export const deployDashboardPlan = async (
         config.projectId,
         config.workspaceId,
         dashboardId,
+        region,
       ),
       reports: plan.reports.map((reportPlan, index) => ({
         plan: reportPlan,
@@ -162,6 +165,7 @@ export const deployDashboardPlan = async (
           config.workspaceId,
           dashboardId!,
           index + 1,
+          region,
         ),
       })),
       createdDashboard: !config.dashboardId,
@@ -196,6 +200,7 @@ export const deployDashboardPlan = async (
         config.workspaceId,
         dashboardId,
         bookmark.id,
+        region,
       ),
     });
   }
@@ -206,6 +211,7 @@ export const deployDashboardPlan = async (
       config.projectId,
       config.workspaceId,
       dashboardId,
+      region,
     ),
     reports,
     createdDashboard,
