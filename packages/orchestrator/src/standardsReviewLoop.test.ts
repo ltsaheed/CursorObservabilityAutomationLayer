@@ -39,6 +39,7 @@ const sampleReport: IInstrumentReport = {
   helpersUsed: ["trackPageView"],
   helpersCreated: [],
   deduplicationDecisions: [],
+  changeBlocks: [],
 };
 
 describe("packages/orchestrator/src/standardsReviewLoop.ts", () => {

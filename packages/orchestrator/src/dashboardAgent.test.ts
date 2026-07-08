@@ -34,6 +34,7 @@ const checkoutRetryReport: IInstrumentReport = {
   helpersUsed: ["trackPageView", "trackAction"],
   helpersCreated: [],
   deduplicationDecisions: [],
+  changeBlocks: [],
 };
 
 describe("packages/orchestrator/src/dashboardAgent.ts", () => {

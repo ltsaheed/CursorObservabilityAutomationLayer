@@ -12,6 +12,10 @@ import type {
   IProgressReporterState,
 } from "./types.js";
 import type { IGitHubCommentContext } from "./github.js";
+import {
+  collectReviewCommentBlockTargets,
+  type IReviewCommentBlockTarget,
+} from "./reviewCommentBlocks.js";
 
 export const REVIEW_MARKER = "<!-- instrument-review -->";
 
@@ -149,67 +153,105 @@ export const resolveEventMixpanelContext = (
   };
 };
 
+export const buildChangeBlockCommentBody = (
+  block: IReviewCommentBlockTarget,
+  mixpanelByEvent: Map<string, IEventMixpanelContext>,
+): string => {
+  const eventNames = block.events.map((event) => event.name);
+  const titleEvents =
+    eventNames.length > 0
+      ? eventNames.map((name) => `\`${name}\``).join(", ")
+      : "instrumentation change";
+  const lines: string[] = [
+    REVIEW_MARKER,
+    `**Instrument** · ${titleEvents} · _Cursor Cloud Agent_`,
+    "",
+    "**Why this change**",
+    block.justification,
+    "",
+  ];
+
+  if (block.events.length > 0) {
+    lines.push("**Events in this change**");
+
+    for (const event of block.events) {
+      lines.push(`- \`${event.name}\` (${event.trigger})`);
+
+      const propertyEntries = Object.entries(event.properties);
+
+      if (propertyEntries.length > 0) {
+        lines.push("  - Properties:");
+
+        for (const [key, value] of propertyEntries) {
+          lines.push(`    - \`${key}\`: ${String(value)}`);
+        }
+      }
+    }
+
+    lines.push("");
+  }
+
+  lines.push("**Where it appears in Mixpanel**");
+
+  if (block.events.length === 0) {
+    lines.push("- Helper or module change — no new tracked event in this block.");
+  }
+
+  for (const event of block.events) {
+    const mixpanel = mixpanelByEvent.get(event.name);
+
+    if (!mixpanel) {
+      continue;
+    }
+
+    lines.push(`- \`${event.name}\`:`);
+
+    if (mixpanel.reportName) {
+      const status = mixpanel.plannedOnly ? "Planned report" : "Report";
+      lines.push(`  - ${status}: **${mixpanel.reportName}** (${mixpanel.reportType ?? "insights"})`);
+    } else {
+      lines.push("  - No dashboard report mapped yet.");
+    }
+
+    if (mixpanel.reportUrl && !mixpanel.plannedOnly) {
+      lines.push(`  - [Open report](${mixpanel.reportUrl})`);
+    }
+
+    if (mixpanel.eventsUrl) {
+      lines.push(`  - [View event in Mixpanel](${mixpanel.eventsUrl})`);
+    }
+  }
+
+  if (block.events.length > 0 && !mixpanelByEvent.size) {
+    lines.push("- Configure `MIXPANEL_PROJECT_ID` and `MIXPANEL_WORKSPACE_ID` for direct Mixpanel links.");
+  }
+
+  const lineLabel =
+    block.startLine === block.endLine
+      ? `line ${block.startLine}`
+      : `lines ${block.startLine}-${block.endLine}`;
+
+  lines.push("", `_File: \`${block.file}\` · ${lineLabel}_`);
+
+  return lines.join("\n");
+};
+
+/** @deprecated Use buildChangeBlockCommentBody */
 export const buildReviewCommentBody = (
   event: IInstrumentEvent,
   file: string,
   mixpanel: IEventMixpanelContext,
-): string => {
-  const lines: string[] = [
-    REVIEW_MARKER,
-    `**Instrument** · \`${event.name}\` · _Cursor Cloud Agent_`,
-    "",
-  ];
-
-  if (event.justification) {
-    lines.push("**Why this change**", event.justification, "");
-  } else {
-    lines.push("**Why this change**", event.trigger, "");
-  }
-
-  lines.push(
-    "**Event**",
-    `- Name: \`${event.name}\``,
-    `- Trigger: ${event.trigger}`,
+): string =>
+  buildChangeBlockCommentBody(
+    {
+      file,
+      startLine: event.line ?? 1,
+      endLine: event.line ?? 1,
+      justification: event.justification ?? event.trigger,
+      events: [event],
+    },
+    new Map([[event.name, mixpanel]]),
   );
-
-  const propertyEntries = Object.entries(event.properties);
-
-  if (propertyEntries.length > 0) {
-    lines.push("- Properties:");
-
-    for (const [key, value] of propertyEntries) {
-      lines.push(`  - \`${key}\`: ${String(value)}`);
-    }
-  }
-
-  lines.push("", "**Where it appears in Mixpanel**");
-
-  if (mixpanel.reportName) {
-    const status = mixpanel.plannedOnly ? "Planned report" : "Report";
-
-    lines.push(`- ${status}: **${mixpanel.reportName}** (${mixpanel.reportType ?? "insights"})`);
-  } else {
-    lines.push("- No dashboard report mapped yet for this event.");
-  }
-
-  if (mixpanel.reportUrl && !mixpanel.plannedOnly) {
-    lines.push(`- [Open report](${mixpanel.reportUrl})`);
-  }
-
-  if (mixpanel.dashboardUrl && !mixpanel.plannedOnly) {
-    lines.push(`- [Open dashboard](${mixpanel.dashboardUrl})`);
-  }
-
-  if (mixpanel.eventsUrl) {
-    lines.push(`- [View event in Mixpanel Lexicon / Live view](${mixpanel.eventsUrl})`);
-  } else {
-    lines.push("- Configure `MIXPANEL_PROJECT_ID` and `MIXPANEL_WORKSPACE_ID` for direct Mixpanel links.");
-  }
-
-  lines.push("", `_File: \`${file}\`${event.line ? ` · line ${event.line}` : ""}_`);
-
-  return lines.join("\n");
-};
 
 const listExistingReviewComments = async (
   context: IGitHubCommentContext,
@@ -231,50 +273,31 @@ const deleteReviewComment = async (
 const createReviewComment = async (
   context: IGitHubCommentContext,
   pullRequest: IPullRequestRef,
-  file: string,
-  line: number,
+  block: IReviewCommentBlockTarget,
   body: string,
 ): Promise<void> => {
   const path = `/repos/${context.repo.owner}/${context.repo.repo}/pulls/${context.prNumber}/comments`;
+  const payload: Record<string, string | number> = {
+    body,
+    commit_id: pullRequest.headSha,
+    path: block.file,
+    side: "RIGHT",
+    line: block.endLine,
+  };
+
+  if (block.startLine < block.endLine) {
+    payload.start_line = block.startLine;
+  }
 
   await githubRequest(context.token, path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      body,
-      commit_id: pullRequest.headSha,
-      path: file,
-      line,
-      side: "RIGHT",
-    }),
+    body: JSON.stringify(payload),
   });
 };
 
-export const collectReviewCommentTargets = (
-  report: IInstrumentReport,
-): Array<{ file: string; line: number; event: IInstrumentEvent }> => {
-  if (report.newEvents.length === 0 || report.filesChanged.length === 0) {
-    return [];
-  }
-
-  const newEventNames = new Set(report.newEvents);
-  const changedFiles = new Set(report.filesChanged);
-  const targets: Array<{ file: string; line: number; event: IInstrumentEvent }> = [];
-
-  for (const page of report.pages) {
-    if (!changedFiles.has(page.file)) {
-      continue;
-    }
-
-    for (const event of page.events) {
-      if (event.line && newEventNames.has(event.name)) {
-        targets.push({ file: page.file, line: event.line, event });
-      }
-    }
-  }
-
-  return targets;
-};
+export { collectReviewCommentBlockTargets } from "./reviewCommentBlocks.js";
+export { collectReviewCommentTargets } from "./reviewCommentBlocks.js";
 
 export const syncReviewComments = async (options: {
   context: IGitHubCommentContext;
@@ -288,7 +311,7 @@ export const syncReviewComments = async (options: {
     return { posted: 0, skipped: 0 };
   }
 
-  const targets = collectReviewCommentTargets(state.report);
+  const targets = collectReviewCommentBlockTargets(state.report);
 
   if (targets.length === 0) {
     return { posted: 0, skipped: 0 };
@@ -306,18 +329,26 @@ export const syncReviewComments = async (options: {
   let posted = 0;
   let skipped = 0;
 
-  for (const target of targets) {
-    const mixpanel = resolveEventMixpanelContext(
-      target.event.name,
-      state.dashboardPlan,
-      state.deployResult,
-      mixpanelProjectId,
-      mixpanelWorkspaceId,
-    );
-    const body = buildReviewCommentBody(target.event, target.file, mixpanel);
+  for (const block of targets) {
+    const mixpanelByEvent = new Map<string, IEventMixpanelContext>();
+
+    for (const event of block.events) {
+      mixpanelByEvent.set(
+        event.name,
+        resolveEventMixpanelContext(
+          event.name,
+          state.dashboardPlan,
+          state.deployResult,
+          mixpanelProjectId,
+          mixpanelWorkspaceId,
+        ),
+      );
+    }
+
+    const body = buildChangeBlockCommentBody(block, mixpanelByEvent);
 
     try {
-      await createReviewComment(context, { headSha }, target.file, target.line, body);
+      await createReviewComment(context, { headSha }, block, body);
       posted += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Review comment failed";

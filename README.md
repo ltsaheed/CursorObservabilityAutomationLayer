@@ -129,8 +129,8 @@ With `CURSOR_API_KEY` set, the Code Agent runs in Cursor Cloud against the PR (`
 4. **Dashboard agent** — plans Mixpanel insights/funnel reports (only if standards review passes)
 5. **Mixpanel deploy** — creates dashboard bookmarks via service account API
 6. **GitHub comment** — sticky PR comment with decisions, review result, and Mixpanel links
-7. **Inline review comments** — per-line justifications from the Cloud Agent report, plus Mixpanel mapping
+7. **Inline review comments** — one comment per logical change block on the diff (justification + Mixpanel mapping), not one comment per line
 
 Human reviewers still approve PR merge — Instrument does not auto-merge.
 
-Inline comments are posted on the PR diff by Instrument (using `GITHUB_TOKEN`). The **justifications** come from the Cursor Cloud Agent's report; accurate `line` numbers in `.instrument/report.json` are required for correct anchoring.
+Inline comments are posted on the PR diff by Instrument (using `GITHUB_TOKEN`). Each comment covers a **change block** (a contiguous edit or logical group of lines in one file). The Code Agent defines blocks in `changeBlocks` inside `.instrument/report.json`; accurate `startLine`/`endLine` values are required for correct anchoring.

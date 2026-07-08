@@ -104,6 +104,24 @@ const buildCheckoutRetryDryRunReport = (
       },
     ],
     filesChanged: [targetFile, `${targetFile.replace(/\.tsx$/, ".test.tsx")}`],
+    changeBlocks: [
+      {
+        file: targetFile,
+        startLine: 8,
+        endLine: 8,
+        justification:
+          "Page mount block: ADR-031 requires a page view on mount. Reused `trackPageView` instead of duplicating raw `track()`.",
+        events: ["checkout_retry_viewed"],
+      },
+      {
+        file: targetFile,
+        startLine: 18,
+        endLine: 18,
+        justification:
+          "Navigation block: the back link is a funnel exit point. `trackAction` captures the CTA with `step` for retry funnel analysis.",
+        events: ["checkout_retry_back_clicked"],
+      },
+    ],
   });
 };
 

@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import {
+  buildChangeBlockCommentBody,
   buildReviewCommentBody,
   collectReviewCommentTargets,
   resolveEventMixpanelContext,
 } from "./reviewComments.js";
+import { collectReviewCommentBlockTargets } from "./reviewCommentBlocks.js";
 import type { IDashboardPlan, IInstrumentReport } from "./types.js";
 
 const sampleReport: IInstrumentReport = {
@@ -31,6 +33,15 @@ const sampleReport: IInstrumentReport = {
   helpersUsed: ["trackPageView"],
   helpersCreated: [],
   deduplicationDecisions: [],
+  changeBlocks: [
+    {
+      file: "src/pages/CheckoutRetryPage.tsx",
+      startLine: 8,
+      endLine: 8,
+      justification: "Page view required on mount per ADR-031.",
+      events: ["checkout_retry_viewed"],
+    },
+  ],
 };
 
 const samplePlan: IDashboardPlan = {
@@ -53,6 +64,31 @@ describe("packages/orchestrator/src/reviewComments.ts", () => {
     assert.equal(targets.length, 1);
     assert.equal(targets[0]?.line, 8);
     assert.equal(targets[0]?.file, "src/pages/CheckoutRetryPage.tsx");
+  });
+
+  test("given change blocks this should collect one target per block", () => {
+    const blocks = collectReviewCommentBlockTargets(sampleReport);
+
+    assert.equal(blocks.length, 1);
+    assert.equal(blocks[0]?.startLine, 8);
+    assert.equal(blocks[0]?.events.length, 1);
+  });
+
+  test("given change block this should build grouped review comment body", () => {
+    const block = collectReviewCommentBlockTargets(sampleReport)[0]!;
+    const mixpanel = resolveEventMixpanelContext(
+      "checkout_retry_viewed",
+      samplePlan,
+      undefined,
+      "123",
+      "456",
+    );
+    const body = buildChangeBlockCommentBody(block, new Map([["checkout_retry_viewed", mixpanel]]));
+
+    assert.match(body, /Why this change/);
+    assert.match(body, /Events in this change/);
+    assert.match(body, /checkout_retry_viewed/);
+    assert.match(body, /lines 8-8|line 8/);
   });
 
   test("given no new events this should skip inline review comment targets", () => {

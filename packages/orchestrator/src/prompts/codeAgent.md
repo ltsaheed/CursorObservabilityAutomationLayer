@@ -48,7 +48,33 @@ Example event entry:
 }
 ```
 
-Instrument posts **inline PR review comments** on each `line` with the justification and Mixpanel mapping. Accurate line numbers are required.
+Instrument posts **inline PR review comments** on the PR diff — one comment per **logical change block** (not one comment per line). Group nearby instrumentation in the same file into a single block; separate distant edits get separate comments.
+
+Each block in `changeBlocks` must include:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `file` | yes | path relative to repo root |
+| `startLine` | yes | first line of this change block in the diff |
+| `endLine` | yes | last line of this change block (same as startLine for a single line) |
+| `justification` | yes | 2-3 sentences explaining the whole block (why these lines changed together) |
+| `events` | no | event names from `pages[].events` covered by this block (empty for helper-only blocks) |
+
+Example: mount tracking on lines 8-11 and a click handler on line 24 → **two** `changeBlocks` entries on the same file.
+
+Example change block:
+
+```json
+{
+  "file": "src/pages/CheckoutRetryPage.tsx",
+  "startLine": 8,
+  "endLine": 11,
+  "justification": "Page mount block: ADR-031 page view on mount via trackPageView.",
+  "events": ["checkout_retry_viewed"]
+}
+```
+
+Helper-only edits (e.g. new function in `src/lib/analytics.ts`) also need a `changeBlocks` entry with `events: []` and line range covering the helper.
 
 ```json
 {
@@ -65,7 +91,8 @@ Instrument posts **inline PR review comments** on each `line` with the justifica
   "filesChanged": [...],
   "helpersUsed": ["trackPageView", "trackAction"],
   "helpersCreated": [],
-  "deduplicationDecisions": [...]
+  "deduplicationDecisions": [...],
+  "changeBlocks": [...]
 }
 ```
 

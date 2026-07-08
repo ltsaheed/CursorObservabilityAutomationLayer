@@ -146,6 +146,7 @@ export const normalizeReportPayload = (
     deduplicationDecisions: Array.isArray(parsed.deduplicationDecisions)
       ? parsed.deduplicationDecisions
       : [],
+    changeBlocks: Array.isArray(parsed.changeBlocks) ? parsed.changeBlocks : [],
   };
 };
 

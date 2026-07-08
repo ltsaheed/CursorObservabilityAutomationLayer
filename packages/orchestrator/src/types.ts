@@ -96,6 +96,14 @@ export const instrumentPageSchema = z.object({
   events: z.array(instrumentEventSchema),
 });
 
+export const instrumentChangeBlockSchema = z.object({
+  file: z.string(),
+  startLine: z.number(),
+  endLine: z.number(),
+  justification: z.string(),
+  events: z.array(z.string()).default([]),
+});
+
 export const instrumentReportSchema = z.object({
   version: z.literal("1"),
   prSummary: z.string(),
@@ -105,10 +113,12 @@ export const instrumentReportSchema = z.object({
   helpersUsed: z.array(z.string()).default([]),
   helpersCreated: z.array(z.string()).default([]),
   deduplicationDecisions: z.array(deduplicationDecisionSchema).default([]),
+  changeBlocks: z.array(instrumentChangeBlockSchema).default([]),
 });
 
 export type IInstrumentEvent = z.infer<typeof instrumentEventSchema>;
 export type IInstrumentPage = z.infer<typeof instrumentPageSchema>;
+export type IInstrumentChangeBlock = z.infer<typeof instrumentChangeBlockSchema>;
 export type IInstrumentReport = z.infer<typeof instrumentReportSchema>;
 
 export const dashboardPlanDecisionSchema = z.object({
