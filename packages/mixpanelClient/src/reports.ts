@@ -7,6 +7,7 @@ import {
   getDashboardPath,
 } from "./client.js";
 import { resolveMixpanelRegion } from "./endpoints.js";
+import { findReportForPlanOnDashboard } from "./reportMatching.js";
 import type {
   ICreateBookmarkParams,
   ICreateDashboardParams,
@@ -32,6 +33,44 @@ export {
   buildFunnelsBookmarkParams,
   buildInsightsBookmarkParams,
 } from "./bookmarkParams.js";
+
+export const listDashboards = async (
+  config: IMixpanelClientConfig,
+): Promise<IMixpanelDashboard[]> => {
+  const client = createMixpanelHttpClient(config);
+  const path = resolveApiPath(
+    "workspaces/{workspaceId}/dashboards",
+    config.projectId,
+    config.workspaceId,
+  );
+  const dashboards = await client.get<IMixpanelDashboard[]>(path);
+
+  return Array.isArray(dashboards) ? dashboards : [];
+};
+
+export const findDashboardByTitle = async (
+  config: IMixpanelClientConfig,
+  title: string,
+): Promise<number | undefined> => {
+  try {
+    const dashboards = await listDashboards(config);
+    const match = dashboards.find((dashboard) => dashboard.title === title);
+
+    return match?.id;
+  } catch {
+    return undefined;
+  }
+};
+
+const resolveApiPath = (
+  template: string,
+  projectId: string,
+  workspaceId: string,
+): string => {
+  return template
+    .replaceAll("{projectId}", projectId)
+    .replaceAll("{workspaceId}", workspaceId);
+};
 
 export const createDashboard = async (
   config: IMixpanelClientConfig,
@@ -132,24 +171,7 @@ export const createInlineReportOnDashboard = async (
   });
 };
 
-export const findReportOnDashboard = (
-  dashboard: IMixpanelDashboardDetail,
-  reportName: string,
-): { contentId: number; bookmarkId: number } | undefined => {
-  const reports = dashboard.contents?.report;
-
-  if (!reports) {
-    return undefined;
-  }
-
-  for (const [contentId, report] of Object.entries(reports)) {
-    if (report.name === reportName) {
-      return { contentId: Number(contentId), bookmarkId: report.id };
-    }
-  }
-
-  return undefined;
-};
+export { findReportForPlanOnDashboard, findReportOnDashboard } from "./reportMatching.js";
 
 export const deployDashboardPlan = async (
   options: IDeployDashboardPlanOptions,
@@ -191,12 +213,18 @@ export const deployDashboardPlan = async (
   }
 
   if (!dashboardId) {
-    const dashboard = await createDashboard(config, {
-      title: dashboardName,
-      description: "Reports created automatically by Instrument",
-    });
-    dashboardId = dashboard.id;
-    createdDashboard = true;
+    const existingDashboardId = await findDashboardByTitle(config, dashboardName);
+
+    if (existingDashboardId) {
+      dashboardId = existingDashboardId;
+    } else {
+      const dashboard = await createDashboard(config, {
+        title: dashboardName,
+        description: "Reports created automatically by Instrument",
+      });
+      dashboardId = dashboard.id;
+      createdDashboard = true;
+    }
   }
 
   const reports: IDeployedReport[] = [];
@@ -212,7 +240,7 @@ export const deployDashboardPlan = async (
 
   for (const reportPlan of plan.reports) {
     const existing = currentDashboard
-      ? findReportOnDashboard(currentDashboard, reportPlan.name)
+      ? findReportForPlanOnDashboard(currentDashboard, reportPlan)
       : undefined;
 
     if (existing) {
@@ -232,20 +260,24 @@ export const deployDashboardPlan = async (
     }
 
     try {
-      const bookmark = await createBookmark(config, {
+      const dashboard = await createInlineReportOnDashboard(config, dashboardId, {
         name: reportPlan.name,
         bookmarkType: reportPlan.type,
         description: reportPlan.description,
-        dashboardId,
         params: buildBookmarkParams(reportPlan),
       });
 
-      const dashboard = await addReportToDashboard(config, dashboardId, bookmark.id);
-
       currentDashboard = dashboard;
 
-      const located = findReportOnDashboard(dashboard, reportPlan.name);
-      const bookmarkId = located?.bookmarkId ?? bookmark.id;
+      const located = findReportForPlanOnDashboard(dashboard, reportPlan);
+      const bookmarkId = located?.bookmarkId;
+
+      if (!bookmarkId) {
+        throw new MixpanelAppApiError(
+          `Created report "${reportPlan.name}" but could not locate it on dashboard ${dashboardId}`,
+          500,
+        );
+      }
 
       reports.push({
         plan: reportPlan,

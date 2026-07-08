@@ -22,9 +22,15 @@ export {
   createDashboard,
   createInlineReportOnDashboard,
   deployDashboardPlan,
-  findReportOnDashboard,
+  findDashboardByTitle,
   getDashboard,
+  listDashboards,
 } from "./reports.js";
+export {
+  findReportForPlanOnDashboard,
+  findReportOnDashboard,
+  normalizeReportName,
+} from "./reportMatching.js";
 export type {
   ICreateBookmarkParams,
   ICreateDashboardParams,
