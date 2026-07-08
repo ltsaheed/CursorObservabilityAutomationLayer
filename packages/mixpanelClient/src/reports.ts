@@ -120,8 +120,9 @@ export const createBookmark = async (
   const body: Record<string, unknown> = {
     name: params.name,
     type: params.bookmarkType,
-    params: params.params,
+    params: JSON.stringify(params.params),
     dashboard_id: params.dashboardId,
+    v: 2,
   };
 
   if (params.description) {

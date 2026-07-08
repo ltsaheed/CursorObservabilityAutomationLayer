@@ -106,6 +106,9 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     assert.match(requests[0]?.url, /workspaces\/67890\/bookmarks$/);
     assert.equal(requests[0]?.body.dashboard_id, 99);
     assert.equal(requests[0]?.body.type, "insights");
+    assert.equal(requests[0]?.body.v, 2);
+    assert.equal(typeof requests[0]?.body.params, "string");
+    assert.deepEqual(JSON.parse(String(requests[0]?.body.params)), { series: [] });
   });
 
   test("given an API error this should throw MixpanelAppApiError", async () => {
