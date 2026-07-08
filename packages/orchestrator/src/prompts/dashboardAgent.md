@@ -45,5 +45,4 @@ Return **only** valid JSON matching this schema:
 4. Prefer conservative, readable report names.
 5. Use snake_case event names exactly as provided in the report.
 6. Do not invent events that are not in `newEvents`.
-
-If the report is sparse, still return at least one insights report for the primary new event.
+7. If `newEvents` is empty, return `"reports": []` and explain in `decisions` that deploy should be skipped.

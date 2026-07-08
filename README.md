@@ -98,9 +98,25 @@ See [instrument-sample-app](https://github.com/YOUR_ORG/instrument-sample-app) f
 - `MIXPANEL_PROJECT_ID`
 - `MIXPANEL_WORKSPACE_ID`
 - `MIXPANEL_REGION` (`us` or `in` only if your Mixpanel URL starts with `mixpanel.com` or `in.mixpanel.com`; defaults to EU)
-- `MIXPANEL_DASHBOARD_ID` (optional)
+- `MIXPANEL_DASHBOARD_ID` (optional; reuse one board across runs instead of creating a new dashboard each time)
 
 **Not required for deploy:** Mixpanel project token and API secret. Those are for client-side event tracking in your app (for example `VITE_MIXPANEL_TOKEN`), not for Instrument's dashboard deploy step.
+
+### Where Mixpanel reports land
+
+Instrument creates **Boards** (Mixpanel dashboards), not Lexicon entries. Each deploy:
+
+1. Uses `MIXPANEL_DASHBOARD_ID` when set, otherwise creates a board named **Instrument Reports** (or `mixpanel.dashboardName` in `instrument.config.json`).
+2. Creates one saved **bookmark** per planned report (insights or funnel).
+3. Adds each bookmark to that board via the Mixpanel App API.
+
+Open your project in Mixpanel, then go to **Boards** in the left nav. Direct URL shape:
+
+`https://eu.mixpanel.com/project/<MIXPANEL_PROJECT_ID>/view/<MIXPANEL_WORKSPACE_ID>/app/boards#id=<DASHBOARD_ID>`
+
+After a successful deploy, the sticky PR comment includes an **Open dashboard** link. The deploy step log also prints the dashboard URL.
+
+If deploy fails with **"limit of saved reports"**, the Mixpanel project has hit its cap on saved reports/bookmarks. Delete unused reports in Mixpanel, set `MIXPANEL_DASHBOARD_ID` to an existing board (for example `11350065` from the error URL), and re-run. Instrument treats that limit as non-fatal so the PR comment step still runs.
 
 **Finding IDs:** Open Mixpanel and copy the numbers from the URL:
 

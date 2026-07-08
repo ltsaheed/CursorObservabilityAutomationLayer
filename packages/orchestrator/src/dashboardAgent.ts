@@ -70,6 +70,18 @@ export const buildDashboardPlanDeterministic = (
     });
   }
 
+  if (reports.length === 0) {
+    return dashboardPlanSchema.parse({
+      decisions: [
+        {
+          summary: "No dashboard reports for this PR",
+          reason: "newEvents is empty; skip Mixpanel deploy until instrumentation adds new events.",
+        },
+      ],
+      reports: [],
+    });
+  }
+
   if (isFunnelCandidate(allEvents)) {
     const viewed = allEvents.filter((event) => event.endsWith("_viewed"));
 
@@ -82,16 +94,6 @@ export const buildDashboardPlanDeterministic = (
         reason: "Multiple page view events suggest a multi-step funnel",
       });
     }
-  }
-
-  if (reports.length === 0) {
-    reports.push({
-      type: "insights",
-      name: "Instrumented Events Overview",
-      description: "Fallback insights report for instrumented events",
-      event: allEvents[0] ?? "page_viewed",
-      reason: "No event-specific plans matched; using fallback report",
-    });
   }
 
   return dashboardPlanSchema.parse({

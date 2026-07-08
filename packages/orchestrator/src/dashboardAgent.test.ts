@@ -61,4 +61,14 @@ describe("packages/orchestrator/src/dashboardAgent.ts", () => {
     assert.equal(plan.decisions.length, 1);
     assert.match(plan.decisions[0]?.summary ?? "", /Deterministic/i);
   });
+
+  test("given empty newEvents this should return no dashboard reports", () => {
+    const plan = buildDashboardPlanDeterministic({
+      ...checkoutRetryReport,
+      newEvents: [],
+    });
+
+    assert.equal(plan.reports.length, 0);
+    assert.match(plan.decisions[0]?.summary ?? "", /No dashboard reports/i);
+  });
 });

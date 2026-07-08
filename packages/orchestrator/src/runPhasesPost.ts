@@ -51,6 +51,7 @@ export const runDeployPhase = async (
     (await runMixpanelDeploy({
       plan: dashboardPlan,
       envConfig: ctx.mixpanelEnv,
+      workspaceRoot: ctx.options.workspaceRoot,
       dashboardName: ctx.config.mixpanel?.dashboardName,
       dryRun: ctx.options.dryRun,
       reportsOnly: ctx.options.reportsOnly,
