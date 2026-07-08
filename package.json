@@ -1,0 +1,17 @@
+{
+  "name": "instrument",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "instrument": "node packages/orchestrator/dist/index.js",
+    "build": "npm run build -w @instrument/mixpanel-client && npm run build -w @instrument/orchestrator",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.3"
+  },
+  "engines": { "node": ">=22.13.0" }
+}

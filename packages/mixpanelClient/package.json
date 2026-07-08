@@ -1,0 +1,22 @@
+{
+  "name": "@instrument/mixpanel-client",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "tsc -p tsconfig.test.json && node --test dist/**/*.test.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": ["dist"],
+  "devDependencies": {
+    "@types/node": "^22.13.10"
+  }
+}

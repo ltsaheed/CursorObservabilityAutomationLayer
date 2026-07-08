@@ -1,0 +1,155 @@
+name: Instrument Reusable
+
+on:
+  workflow_call:
+    inputs:
+      tooling-repo:
+        description: GitHub slug of the Instrument tooling repo (owner/name)
+        required: true
+        type: string
+      tooling-ref:
+        description: Branch, tag, or SHA of the tooling repo to use
+        required: false
+        type: string
+        default: main
+      workspace-root:
+        description: Path to the app workspace root (relative to caller repo checkout)
+        required: false
+        type: string
+        default: .
+      config-path:
+        description: Path to instrument.config.json (relative to workspace-root)
+        required: false
+        type: string
+        default: instrument.config.json
+      dry-run:
+        description: Simulate agents and Mixpanel deploy
+        required: false
+        type: boolean
+        default: false
+      reports-only:
+        description: Skip Mixpanel deployment
+        required: false
+        type: boolean
+        default: false
+      skip-code-agent:
+        description: Skip cloud code agent phase
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      CURSOR_API_KEY:
+        required: false
+      MIXPANEL_SERVICE_ACCOUNT_USERNAME:
+        required: false
+      MIXPANEL_SERVICE_ACCOUNT_SECRET:
+        required: false
+      MIXPANEL_PROJECT_ID:
+        required: false
+      MIXPANEL_WORKSPACE_ID:
+        required: false
+      MIXPANEL_DASHBOARD_ID:
+        required: false
+
+jobs:
+  instrument:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout Instrument tooling
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.tooling-repo }}
+          ref: ${{ inputs.tooling-ref }}
+          path: .instrument/tooling
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: .instrument/tooling/package-lock.json
+
+      - name: Install and build tooling
+        working-directory: .instrument/tooling
+        run: npm ci && npm run build
+
+      - name: Collect changed files
+        id: changed
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            HEAD_SHA="${{ github.sha }}"
+          fi
+          mapfile -t FILES < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          WORKSPACE="${{ inputs.workspace-root }}"
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "files=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          {
+            echo "files<<EOF"
+            for file in "${FILES[@]}"; do
+              if [[ "$file" == .instrument/* ]]; then
+                continue
+              fi
+              if [ "$WORKSPACE" = "." ]; then
+                printf '%s\n' "$file"
+                continue
+              fi
+              if [[ "$file" == "$WORKSPACE"/* ]]; then
+                printf '%s\n' "${file#"$WORKSPACE"/}"
+              fi
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Instrument pipeline
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          MIXPANEL_SERVICE_ACCOUNT_USERNAME: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME }}
+          MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}
+          MIXPANEL_PROJECT_ID: ${{ secrets.MIXPANEL_PROJECT_ID }}
+          MIXPANEL_WORKSPACE_ID: ${{ secrets.MIXPANEL_WORKSPACE_ID }}
+          MIXPANEL_DASHBOARD_ID: ${{ secrets.MIXPANEL_DASHBOARD_ID }}
+        run: |
+          WORKSPACE="${{ github.workspace }}/${{ inputs.workspace-root }}"
+          CONFIG="${{ inputs.config-path }}"
+          if [[ "$CONFIG" != /* ]]; then
+            CONFIG="$WORKSPACE/$CONFIG"
+          fi
+          ARGS=(
+            run
+            --config "$CONFIG"
+            --workspace-root "$WORKSPACE"
+            --repo "${{ github.repository }}"
+            --pr-number "${{ github.event.pull_request.number }}"
+            --pr-url "${{ github.event.pull_request.html_url }}"
+          )
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          if [ "${{ inputs.reports-only }}" = "true" ]; then
+            ARGS+=(--reports-only)
+          fi
+          if [ "${{ inputs.skip-code-agent }}" = "true" ]; then
+            ARGS+=(--skip-code-agent)
+          fi
+          if [ -n "${{ steps.changed.outputs.files }}" ]; then
+            while IFS= read -r file; do
+              [ -n "$file" ] && ARGS+=(--changed-files "$file")
+            done <<< "${{ steps.changed.outputs.files }}"
+          fi
+          cd .instrument/tooling
+          npm run instrument -- "${ARGS[@]}"
