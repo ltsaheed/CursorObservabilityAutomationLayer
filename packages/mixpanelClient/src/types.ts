@@ -140,6 +140,12 @@ export interface IDeployDashboardPlanResult {
   dashboardUrl: string;
   reports: IDeployedReport[];
   createdDashboard: boolean;
+  /**
+   * True when at least one planned report was skipped because the Mixpanel
+   * project hit its saved-reports limit. The reports that were created before
+   * the limit was reached are still returned.
+   */
+  truncatedByLimit?: boolean;
 }
 
 export interface IMixpanelApiResponse<T> {

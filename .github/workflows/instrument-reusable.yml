@@ -215,6 +215,7 @@ jobs:
           npm run instrument -- dashboard "${ARGS[@]}"
 
       - name: "Mixpanel deploy: Create dashboard bookmarks via the Mixpanel service account API"
+        continue-on-error: true
         env:
           MIXPANEL_SERVICE_ACCOUNT_USERNAME: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_USERNAME }}
           MIXPANEL_SERVICE_ACCOUNT_SECRET: ${{ secrets.MIXPANEL_SERVICE_ACCOUNT_SECRET }}

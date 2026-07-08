@@ -1,5 +1,6 @@
 import { buildBookmarkParams } from "./bookmarkParams.js";
 import {
+  MixpanelAppApiError,
   createMixpanelHttpClient,
   getCreateBookmarkPath,
   getCreateDashboardPath,
@@ -21,6 +22,10 @@ import type {
 import { buildDashboardUrl, buildMixpanelReportUrl } from "./urls.js";
 
 const DEFAULT_DASHBOARD_NAME = "Instrument Reports";
+
+const isSavedReportsLimitError = (error: unknown): boolean =>
+  error instanceof MixpanelAppApiError &&
+  error.message.toLowerCase().includes("limit of saved reports");
 
 export {
   buildBookmarkParams,
@@ -195,35 +200,72 @@ export const deployDashboardPlan = async (
   }
 
   const reports: IDeployedReport[] = [];
+  let truncatedByLimit = false;
+
+  let currentDashboard: IMixpanelDashboardDetail | undefined;
+
+  try {
+    currentDashboard = await getDashboard(config, dashboardId);
+  } catch {
+    currentDashboard = undefined;
+  }
 
   for (const reportPlan of plan.reports) {
-    let dashboard = await createInlineReportOnDashboard(config, dashboardId, {
-      name: reportPlan.name,
-      bookmarkType: reportPlan.type,
-      params: buildBookmarkParams(reportPlan),
-      description: reportPlan.description,
-    });
+    const existing = currentDashboard
+      ? findReportOnDashboard(currentDashboard, reportPlan.name)
+      : undefined;
 
-    let located = findReportOnDashboard(dashboard, reportPlan.name);
+    if (existing) {
+      reports.push({
+        plan: reportPlan,
+        bookmarkId: existing.bookmarkId,
+        reportUrl: buildMixpanelReportUrl(
+          config.projectId,
+          config.workspaceId,
+          dashboardId,
+          existing.bookmarkId,
+          region,
+        ),
+      });
 
-    if (!located) {
-      dashboard = await getDashboard(config, dashboardId);
-      located = findReportOnDashboard(dashboard, reportPlan.name);
+      continue;
     }
 
-    const bookmarkId = located?.bookmarkId ?? 0;
-
-    reports.push({
-      plan: reportPlan,
-      bookmarkId,
-      reportUrl: buildMixpanelReportUrl(
-        config.projectId,
-        config.workspaceId,
+    try {
+      const bookmark = await createBookmark(config, {
+        name: reportPlan.name,
+        bookmarkType: reportPlan.type,
+        description: reportPlan.description,
         dashboardId,
+        params: buildBookmarkParams(reportPlan),
+      });
+
+      const dashboard = await addReportToDashboard(config, dashboardId, bookmark.id);
+
+      currentDashboard = dashboard;
+
+      const located = findReportOnDashboard(dashboard, reportPlan.name);
+      const bookmarkId = located?.bookmarkId ?? bookmark.id;
+
+      reports.push({
+        plan: reportPlan,
         bookmarkId,
-        region,
-      ),
-    });
+        reportUrl: buildMixpanelReportUrl(
+          config.projectId,
+          config.workspaceId,
+          dashboardId,
+          bookmarkId,
+          region,
+        ),
+      });
+    } catch (error) {
+      if (isSavedReportsLimitError(error)) {
+        truncatedByLimit = true;
+        break;
+      }
+
+      throw error;
+    }
   }
 
   return {
@@ -236,5 +278,6 @@ export const deployDashboardPlan = async (
     ),
     reports,
     createdDashboard,
+    truncatedByLimit,
   };
 };

@@ -3,6 +3,7 @@ import { describe, test } from "node:test";
 
 import { MixpanelAppApiError } from "./client.js";
 import {
+  addReportToDashboard,
   createBookmark,
   createDashboard,
   createInlineReportOnDashboard,
@@ -158,6 +159,42 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     assert.equal(bookmark.name, "Checkout Retry Views");
   });
 
+  test("given a bookmark id this should PATCH dashboard with source_bookmark_id", async () => {
+    const requests: Array<{ method: string; url: string; body: Record<string, unknown> }> = [];
+    const config: IMixpanelClientConfig = {
+      ...baseConfig,
+      fetchImpl: createMockFetch((url, init) => {
+        requests.push({
+          method: init?.method ?? "GET",
+          url,
+          body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+        });
+
+        return new Response(
+          JSON.stringify({
+            status: "ok",
+            results: dashboardWithReport(500, 90001, 42, "Checkout Retry Views"),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    };
+
+    const dashboard = await addReportToDashboard(config, 500, 42);
+
+    assert.equal(dashboard.id, 500);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0]?.method, "PATCH");
+    assert.match(requests[0]?.url, /\/dashboards\/500$/);
+    assert.deepEqual(requests[0]?.body.content, {
+      action: "create",
+      content_type: "report",
+      content_params: {
+        source_bookmark_id: 42,
+      },
+    });
+  });
+
   test("given dashboard contents this should find report by name", () => {
     const located = findReportOnDashboard(
       dashboardWithReport(500, 90001, 42, "Checkout Retry Views"),
@@ -189,10 +226,10 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     );
   });
 
-  test("given a dashboard plan this should create dashboard and inline reports on the board", async () => {
+  test("given a dashboard plan this should create dashboard, bookmarks, and add each to the board", async () => {
     const requests: Array<{ method: string; url: string; body?: Record<string, unknown> }> =
       [];
-    let inlineReportCount = 0;
+    let bookmarkId = 0;
     const config: IMixpanelClientConfig = {
       ...baseConfig,
       fetchImpl: createMockFetch((url, init) => {
@@ -214,15 +251,50 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
           );
         }
 
-        if (init?.method === "PATCH" && /\/dashboards\/500$/.test(url)) {
-          inlineReportCount += 1;
-          const name =
-            inlineReportCount === 1 ? "Checkout Retry Views" : "Checkout Retry Funnel";
+        if (init?.method === "GET" && /\/dashboards\/500$/.test(url)) {
+          return new Response(
+            JSON.stringify({
+              status: "ok",
+              results: { id: 500, title: "Instrument Reports", contents: { report: {} } },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        if (init?.method === "POST" && /\/bookmarks$/.test(url)) {
+          bookmarkId += 1;
+          const body = JSON.parse(String(init?.body)) as { name?: string; type?: string };
 
           return new Response(
             JSON.stringify({
               status: "ok",
-              results: dashboardWithReport(500, 90000 + inlineReportCount, inlineReportCount, name),
+              results: {
+                id: bookmarkId,
+                name: body.name,
+                type: body.type,
+              },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        if (init?.method === "PATCH" && /\/dashboards\/500$/.test(url)) {
+          const body = JSON.parse(String(init?.body)) as {
+            content?: { content_params?: { source_bookmark_id?: number } };
+          };
+          const sourceBookmarkId = body.content?.content_params?.source_bookmark_id ?? bookmarkId;
+          const name =
+            sourceBookmarkId === 1 ? "Checkout Retry Views" : "Checkout Retry Funnel";
+
+          return new Response(
+            JSON.stringify({
+              status: "ok",
+              results: dashboardWithReport(
+                500,
+                90000 + sourceBookmarkId,
+                sourceBookmarkId,
+                name,
+              ),
             }),
             { status: 200, headers: { "Content-Type": "application/json" } },
           );
@@ -262,18 +334,33 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
     assert.match(result.dashboardUrl, /#id=500$/);
     assert.equal(result.reports[0]?.bookmarkId, 1);
     assert.equal(
-      requests.filter((entry) => entry.method === "PATCH" && entry.url.includes("/dashboards/500"))
+      requests.filter((entry) => entry.method === "POST" && entry.url.includes("/bookmarks"))
         .length,
       2,
     );
     assert.equal(
-      requests.some((entry) => entry.method === "POST" && entry.url.includes("/bookmarks")),
-      false,
+      requests.filter((entry) => entry.method === "PATCH" && entry.url.includes("/dashboards/500"))
+        .length,
+      2,
+    );
+
+    const addToBoardPatches = requests.filter(
+      (entry) =>
+        entry.method === "PATCH" &&
+        entry.url.includes("/dashboards/500") &&
+        entry.body?.content,
+    );
+
+    assert.equal(addToBoardPatches.length, 2);
+    assert.deepEqual(
+      (addToBoardPatches[0]?.body?.content as Record<string, unknown>).content_params,
+      { source_bookmark_id: 1 },
     );
   });
 
-  test("given an existing dashboard id this should skip dashboard creation", async () => {
-    const requests: Array<{ method: string; url: string }> = [];
+  test("given an existing dashboard id this should skip dashboard creation and add reports to the board", async () => {
+    const requests: Array<{ method: string; url: string; body?: Record<string, unknown> }> =
+      [];
     const config: IMixpanelClientConfig = {
       ...baseConfig,
       dashboardId: "777",
@@ -281,7 +368,30 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
         requests.push({
           method: init?.method ?? "GET",
           url,
+          body: init?.body
+            ? (JSON.parse(String(init.body)) as Record<string, unknown>)
+            : undefined,
         });
+
+        if (init?.method === "GET" && /\/dashboards\/777$/.test(url)) {
+          return new Response(
+            JSON.stringify({
+              status: "ok",
+              results: { id: 777, title: "Instrument Reports", contents: { report: {} } },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
+
+        if (init?.method === "POST" && /\/bookmarks$/.test(url)) {
+          return new Response(
+            JSON.stringify({
+              status: "ok",
+              results: { id: 1, name: "Checkout Retry Views", type: "insights" },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          );
+        }
 
         if (init?.method === "PATCH" && /\/dashboards\/777$/.test(url)) {
           return new Response(
@@ -316,9 +426,23 @@ describe("packages/mixpanelClient/src/reports.ts", () => {
 
     assert.equal(result.createdDashboard, false);
     assert.equal(result.dashboardId, 777);
+    assert.equal(result.reports[0]?.bookmarkId, 1);
     assert.equal(
       requests.some((entry) => entry.method === "POST" && /\/dashboards$/.test(entry.url)),
       false,
+    );
+    assert.equal(
+      requests.some((entry) => entry.method === "POST" && entry.url.includes("/bookmarks")),
+      true,
+    );
+    assert.equal(
+      requests.some(
+        (entry) =>
+          entry.method === "PATCH" &&
+          entry.url.includes("/dashboards/777") &&
+          (entry.body?.content as Record<string, unknown> | undefined)?.content_params,
+      ),
+      true,
     );
   });
 });

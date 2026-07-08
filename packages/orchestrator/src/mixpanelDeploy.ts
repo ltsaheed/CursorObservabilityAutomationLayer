@@ -126,11 +126,29 @@ export const runMixpanelDeploy = async (
     });
 
     reporter.setDeployResult(result);
-    reporter.decision(
-      "mixpanel-deploy",
-      "Deployed",
-      `${result.reports.length} report(s) on dashboard ${result.dashboardId} · ${result.dashboardUrl}`,
-    );
+
+    if (result.truncatedByLimit) {
+      const planned = plan.reports.length;
+      const created = result.reports.length;
+
+      reporter.log(
+        "mixpanel-deploy",
+        `Mixpanel saved-reports limit reached: created ${created} of ${planned} planned report(s). Delete unused saved reports in Mixpanel, set MIXPANEL_DASHBOARD_ID to reuse one board, or upgrade the project plan.`,
+        "warn",
+      );
+      reporter.decision(
+        "mixpanel-deploy",
+        "Partial",
+        `${created}/${planned} report(s) on dashboard ${result.dashboardId} · ${result.dashboardUrl}`,
+      );
+    } else {
+      reporter.decision(
+        "mixpanel-deploy",
+        "Deployed",
+        `${result.reports.length} report(s) on dashboard ${result.dashboardId} · ${result.dashboardUrl}`,
+      );
+    }
+
     reporter.phaseComplete("mixpanel-deploy", "complete");
 
     return result;
@@ -141,7 +159,7 @@ export const runMixpanelDeploy = async (
       reporter.log(
         "mixpanel-deploy",
         `${message}. Delete unused saved reports in Mixpanel (Boards or Reports), set MIXPANEL_DASHBOARD_ID to reuse one board, or upgrade the project plan.`,
-        "error",
+        "warn",
       );
       reporter.decision(
         "mixpanel-deploy",

@@ -211,6 +211,7 @@ export const deployResultSchema = z.object({
   dashboardUrl: z.string(),
   reports: z.array(deployedReportSchema),
   createdDashboard: z.boolean(),
+  truncatedByLimit: z.boolean().optional(),
 });
 
 export const finalResultSchema = z.object({
