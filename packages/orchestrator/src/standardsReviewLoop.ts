@@ -1,16 +1,15 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import { Agent, CursorAgentError } from "@cursor/sdk";
 
 import { runReviewAgent } from "./reviewAgent.js";
+import { loadInstrumentReport, REPORT_RELATIVE_PATH } from "./reportLoader.js";
+import type { IGitHubCommentContext } from "./github.js";
 import type {
   ICoverageAssessment,
   IInstrumentReport,
   IProgressReporter,
   IStandardsReviewResult,
 } from "./types.js";
-import { instrumentReportSchema, standardsReviewResultSchema } from "./types.js";
+import { standardsReviewResultSchema } from "./types.js";
 
 export class StandardsReviewError extends Error {
   public readonly issues: IStandardsReviewResult["issues"];
@@ -29,23 +28,13 @@ export interface IStandardsReviewLoopOptions {
   codeAgentId?: string;
   dryRun: boolean;
   reporter: IProgressReporter;
+  github?: IGitHubCommentContext;
 }
 
 const MAX_REVIEW_RETRIES = 2;
-const REPORT_PATH = ".instrument/report.json";
-
-const readReport = (workspaceRoot: string): IInstrumentReport | null => {
-  try {
-    const raw = readFileSync(join(workspaceRoot, REPORT_PATH), "utf8");
-
-    return instrumentReportSchema.parse(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-};
 
 const buildFixPrompt = (issues: IStandardsReviewResult["issues"]): string => {
-  return `The Review Agent found standards violations. Fix every issue, re-run tests, update ${REPORT_PATH}.\n\n${JSON.stringify(issues, null, 2)}\n\nFollow ADR-031 in .cursor/rules/analytics-standards.mdc.`;
+  return `The Review Agent found standards violations. Fix every issue, re-run tests, update ${REPORT_RELATIVE_PATH}, commit and push.\n\n${JSON.stringify(issues, null, 2)}\n\nFollow ADR-031 in .cursor/rules/analytics-standards.mdc.`;
 };
 
 const resumeCodeAgentFix = async (
@@ -78,7 +67,7 @@ const resumeCodeAgentFix = async (
 export const runStandardsReviewLoop = async (
   options: IStandardsReviewLoopOptions,
 ): Promise<{ report: IInstrumentReport; review: IStandardsReviewResult }> => {
-  const { reporter, dryRun, workspaceRoot, assessment, codeAgentId } = options;
+  const { reporter, dryRun, workspaceRoot, assessment, codeAgentId, github } = options;
   let currentReport = options.report;
 
   reporter.phaseStart("standards-review");
@@ -152,10 +141,10 @@ export const runStandardsReviewLoop = async (
       throw error;
     }
 
-    const refreshed = readReport(workspaceRoot);
+    const refreshed = await loadInstrumentReport({ workspaceRoot, github });
 
-    if (refreshed) {
-      currentReport = refreshed;
+    if (refreshed.report) {
+      currentReport = refreshed.report;
       reporter.setReport(currentReport);
     }
   }

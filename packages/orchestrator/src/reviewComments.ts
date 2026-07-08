@@ -156,7 +156,7 @@ export const buildReviewCommentBody = (
 ): string => {
   const lines: string[] = [
     REVIEW_MARKER,
-    `**Instrument** · \`${event.name}\``,
+    `**Instrument** · \`${event.name}\` · _Cursor Cloud Agent_`,
     "",
   ];
 
@@ -353,4 +353,4 @@ export const buildMixpanelSectionForComment = (
 };
 
 export const buildBotIdentityNote = (): string =>
-  "_Inline comments posted by Instrument (Cursor Code Agent). Appears as `github-actions[bot]` unless a custom GitHub App is configured._";
+  "_Justifications from the Cursor Cloud Agent report. GitHub posts these via Instrument orchestration._";

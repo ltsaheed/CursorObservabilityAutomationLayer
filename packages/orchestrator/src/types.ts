@@ -267,6 +267,7 @@ export interface IProgressReporterState {
   deployResult?: z.infer<typeof deployResultSchema>;
   runMetadata?: IRunMetadata;
   runHistory?: IRunHistoryEntry[];
+  codeAgentId?: string;
 }
 
 export interface IRunMetadata {
@@ -297,6 +298,7 @@ export interface IProgressReporter {
   setDeployResult: (result: z.infer<typeof deployResultSchema>) => void;
   setRunMetadata: (metadata: IRunMetadata) => void;
   setRunHistory: (history: IRunHistoryEntry[]) => void;
+  setCodeAgentId: (agentId: string) => void;
   appendSummaryLine: (line: string) => void;
   getState: () => IProgressReporterState;
   finalize: () => Promise<void>;

@@ -206,6 +206,10 @@ export const createProgressReporter = (): IProgressReporter => {
       state.runHistory = history;
     },
 
+    setCodeAgentId: (agentId: string) => {
+      state.codeAgentId = agentId;
+    },
+
     appendSummaryLine: (line: string) => {
       state.summaryLines.push(line);
       writeStepSummary(line);

@@ -102,14 +102,24 @@ npm run typecheck
 
 ## Pipeline phases
 
+Instrument orchestrates **three Cursor agents** via the Cursor SDK:
+
+| Agent | Runtime | Role |
+| --- | --- | --- |
+| **Code Agent** | Cursor Cloud Agent on the PR | Adds instrumentation, commits to the branch, writes `.instrument/report.json` |
+| **Review Agent** | Cursor SDK (`Agent.prompt`) | Validates against ADR-031; `Agent.resume` sends fixes back to the Cloud Agent |
+| **Dashboard Agent** | Cursor SDK (`Agent.prompt`) | Plans Mixpanel insights/funnel reports from new events |
+
+With `CURSOR_API_KEY` set, the Code Agent runs in Cursor Cloud against the PR (`Agent.create` + `prUrl`). GitHub Actions orchestrates the pipeline and posts PR comments; the **code changes come from the Cursor Cloud Agent**.
+
 1. **Pre-scan** — detect missing tracking in changed page files
-2. **Code agent** — Cursor cloud agent adds instrumentation and writes `.instrument/report.json`
-3. **Standards review** — Cursor Review Agent validates against ADR-031; on failure, `Agent.resume` fixes Code Agent (max 2 retries)
+2. **Code Agent** — Cursor Cloud Agent adds instrumentation and writes `.instrument/report.json`
+3. **Standards review** — Cursor Review Agent validates against ADR-031; on failure, `Agent.resume` fixes the Cloud Agent (max 2 retries)
 4. **Dashboard agent** — plans Mixpanel insights/funnel reports (only if standards review passes)
 5. **Mixpanel deploy** — creates dashboard bookmarks via service account API
 6. **GitHub comment** — sticky PR comment with decisions, review result, and Mixpanel links
-7. **Inline review comments** — per-line comments on instrumented code with justifications and Mixpanel mapping (requires `line` + `justification` in the report)
+7. **Inline review comments** — per-line justifications from the Cloud Agent report, plus Mixpanel mapping
 
 Human reviewers still approve PR merge — Instrument does not auto-merge.
 
-Inline comments appear on the PR diff as review comments (posted by `github-actions[bot]`). The Code Agent must include accurate `line` numbers in `.instrument/report.json` for them to anchor correctly.
+Inline comments are posted on the PR diff by Instrument (using `GITHUB_TOKEN`). The **justifications** come from the Cursor Cloud Agent's report; accurate `line` numbers in `.instrument/report.json` are required for correct anchoring.

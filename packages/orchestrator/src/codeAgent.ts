@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 
 import { Agent, CursorAgentError } from "@cursor/sdk";
 
+import {
+  loadInstrumentReport,
+  REPORT_RELATIVE_PATH,
+} from "./reportLoader.js";
 import type {
   ICoverageAssessment,
   ICodeAgentResult,
@@ -11,6 +15,8 @@ import type {
   IProgressReporter,
 } from "./types.js";
 import { instrumentReportSchema } from "./types.js";
+import type { IGitHubCommentContext } from "./github.js";
+import { parseRepoSlug } from "./github.js";
 
 export interface ICodeAgentOptions {
   prUrl?: string;
@@ -19,6 +25,7 @@ export interface ICodeAgentOptions {
   dryRun: boolean;
   skipCodeAgent: boolean;
   reporter: IProgressReporter;
+  github?: IGitHubCommentContext;
 }
 
 const PROMPT_PATH = join(
@@ -26,8 +33,6 @@ const PROMPT_PATH = join(
   "prompts",
   "codeAgent.md",
 );
-
-const REPORT_RELATIVE_PATH = ".instrument/report.json";
 
 const extractRepoUrlFromPrUrl = (prUrl: string): string => {
   const match = prUrl.match(/^(https:\/\/github\.com\/[^/]+\/[^/]+)/);
@@ -41,17 +46,6 @@ const extractRepoUrlFromPrUrl = (prUrl: string): string => {
 
 const loadPrompt = (): string => {
   return readFileSync(PROMPT_PATH, "utf8");
-};
-
-const readReportFromWorkspace = (workspaceRoot: string): IInstrumentReport | null => {
-  try {
-    const raw = readFileSync(join(workspaceRoot, REPORT_RELATIVE_PATH), "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-
-    return instrumentReportSchema.parse(parsed);
-  } catch {
-    return null;
-  }
 };
 
 const buildCheckoutRetryDryRunReport = (
@@ -113,26 +107,11 @@ const buildCheckoutRetryDryRunReport = (
   });
 };
 
-const extractReportFromAgentResult = (resultText: string): IInstrumentReport | null => {
-  const jsonMatch = resultText.match(/\{[\s\S]*"version"\s*:\s*"1"[\s\S]*\}/);
-
-  if (!jsonMatch) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(jsonMatch[0]) as unknown;
-
-    return instrumentReportSchema.parse(parsed);
-  } catch {
-    return null;
-  }
-};
-
 export const runCodeAgent = async (
   options: ICodeAgentOptions,
 ): Promise<ICodeAgentResult | null> => {
-  const { reporter, assessment, dryRun, skipCodeAgent, workspaceRoot, prUrl } = options;
+  const { reporter, assessment, dryRun, skipCodeAgent, workspaceRoot, prUrl, github } =
+    options;
 
   reporter.phaseStart("code-agent");
 
@@ -161,7 +140,7 @@ export const runCodeAgent = async (
   }
 
   const apiKey = process.env.CURSOR_API_KEY;
-  const prompt = `${loadPrompt()}\n\n## Pre-scan assessment\n\n${JSON.stringify(assessment, null, 2)}`;
+  const prompt = `${loadPrompt()}\n\n## Pre-scan assessment\n\n${JSON.stringify(assessment, null, 2)}\n\n## Required output\n\nYou MUST write valid JSON to \`${REPORT_RELATIVE_PATH}\` and commit it to the PR branch before finishing.`;
 
   try {
     await using agent = await Agent.create({
@@ -175,7 +154,7 @@ export const runCodeAgent = async (
     });
 
     const run = await agent.send(prompt);
-    reporter.log("code-agent", `Started agent run ${run.id}`);
+    reporter.log("code-agent", `Started Cursor Cloud Agent run ${run.id}`);
 
     for await (const event of run.stream()) {
       reporter.streamEvent("code-agent", event);
@@ -190,15 +169,16 @@ export const runCodeAgent = async (
       return null;
     }
 
-    const workspaceReport = readReportFromWorkspace(workspaceRoot);
-    const parsedReport =
-      workspaceReport ??
-      (result.result ? extractReportFromAgentResult(result.result) : null);
+    const loaded = await loadInstrumentReport({
+      workspaceRoot,
+      agentResultText: result.result,
+      github,
+    });
 
-    if (!parsedReport) {
+    if (!loaded.report) {
       reporter.log(
         "code-agent",
-        `Could not parse ${REPORT_RELATIVE_PATH} after agent completion`,
+        `Could not parse ${REPORT_RELATIVE_PATH} after agent completion (${loaded.errors.join("; ")})`,
         "error",
       );
       reporter.phaseComplete("code-agent", "failed");
@@ -206,10 +186,15 @@ export const runCodeAgent = async (
       return null;
     }
 
-    reporter.setReport(parsedReport);
+    reporter.decision(
+      "code-agent",
+      "Report loaded",
+      `Source: ${loaded.source ?? "unknown"}`,
+    );
+    reporter.setReport(loaded.report);
     reporter.phaseComplete("code-agent", "complete");
 
-    return { report: parsedReport, agentId: agent.agentId };
+    return { report: loaded.report, agentId: agent.agentId };
   } catch (error) {
     const message =
       error instanceof CursorAgentError
@@ -223,4 +208,19 @@ export const runCodeAgent = async (
 
     return null;
   }
+};
+
+export const buildGithubContextFromRunOptions = (options: {
+  repo?: string;
+  prNumber?: number;
+}): IGitHubCommentContext | undefined => {
+  if (!options.repo || !options.prNumber || !process.env.GITHUB_TOKEN) {
+    return undefined;
+  }
+
+  return {
+    token: process.env.GITHUB_TOKEN,
+    repo: parseRepoSlug(options.repo),
+    prNumber: options.prNumber,
+  };
 };

@@ -177,6 +177,21 @@ export const renderCommentBody = (
     lines.push("");
   }
 
+  lines.push(
+    "### Cursor agents",
+    "- **Code Agent** — Cursor Cloud Agent on this PR (instrumentation commits + `.instrument/report.json`)",
+  );
+
+  if (state.codeAgentId) {
+    lines.push(`- Cloud Agent ID: \`${state.codeAgentId}\``);
+  }
+
+  lines.push(
+    "- **Review Agent** — Cursor SDK standards review against ADR-031",
+    "- **Dashboard Agent** — Cursor SDK Mixpanel report planning",
+    "",
+  );
+
   if (state.assessment) {
     lines.push("### Pre-scan", state.assessment.summary, "");
 
@@ -312,7 +327,7 @@ export const renderCommentBody = (
     lines.push("");
   }
 
-  lines.push("_Updated by Instrument bot._");
+  lines.push("_Updated by Instrument · instrumentation via Cursor Cloud Agent._");
 
   if (state.runHistory && state.runHistory.length > 0) {
     lines.push("", serializeRunHistory(state.runHistory));

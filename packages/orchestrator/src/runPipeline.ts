@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { runCodeAgent } from "./codeAgent.js";
+import { runCodeAgent, buildGithubContextFromRunOptions } from "./codeAgent.js";
 import { loadInstrumentConfig, resolveMixpanelEnv } from "./config.js";
 import { runDashboardAgent } from "./dashboardAgent.js";
 import { computeOverallStatus, parseRepoSlug, syncPrComment } from "./github.js";
@@ -170,9 +170,14 @@ export const runPipeline = async (options: IRunOptions): Promise<IFinalResult> =
       dryRun: options.dryRun,
       skipCodeAgent: options.skipCodeAgent,
       reporter,
+      github: buildGithubContextFromRunOptions(options),
     });
 
     report = codeAgentResult?.report;
+
+    if (codeAgentResult?.agentId) {
+      reporter.setCodeAgentId(codeAgentResult.agentId);
+    }
 
     if (report) {
       try {
@@ -180,10 +185,11 @@ export const runPipeline = async (options: IRunOptions): Promise<IFinalResult> =
           workspaceRoot: options.workspaceRoot,
           assessment,
           report,
-          codeAgentId: codeAgentResult?.agentId,
-          dryRun: options.dryRun,
-          reporter,
-        });
+        codeAgentId: codeAgentResult?.agentId,
+        dryRun: options.dryRun,
+        reporter,
+        github: buildGithubContextFromRunOptions(options),
+      });
         report = reviewLoopResult.report;
         standardsReview = reviewLoopResult.review;
         reporter.setStandardsReview(standardsReview);

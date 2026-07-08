@@ -80,6 +80,6 @@ describe("packages/orchestrator/src/reviewComments.ts", () => {
     assert.match(body, /Why this change/);
     assert.match(body, /checkout_retry_viewed/);
     assert.match(body, /Mixpanel/);
-    assert.match(body, /instrument-review/);
+    assert.match(body, /Cursor Cloud Agent/);
   });
 });

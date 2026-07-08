@@ -77,4 +77,12 @@ When `CheckoutRetryPage` is in scope and `trackPageView` / `trackAction` exist:
 - Back link: `trackAction('checkout_retry', 'back_clicked', { step: 'retry', cta: 'back_to_checkout' })`
 - Do NOT duplicate raw `track('checkout_retry_viewed', ...)` if helpers exist.
 
-Return a brief summary after writing the report.
+## Required deliverable
+
+Before finishing you **must**:
+
+1. Implement all instrumentation changes on the PR branch.
+2. Write valid JSON to `.instrument/report.json` (schema above).
+3. **Commit and push** `.instrument/report.json` with your code changes.
+
+The CI pipeline reads this file from the PR branch after you complete — it will not be in the Actions runner checkout until pushed.
