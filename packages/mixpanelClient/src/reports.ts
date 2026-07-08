@@ -1,96 +1,29 @@
+import { buildBookmarkParams } from "./bookmarkParams.js";
 import {
   createMixpanelHttpClient,
   getCreateBookmarkPath,
   getCreateDashboardPath,
 } from "./client.js";
+import { resolveMixpanelRegion } from "./endpoints.js";
 import type {
   ICreateBookmarkParams,
   ICreateDashboardParams,
   IDeployDashboardPlanOptions,
   IDeployDashboardPlanResult,
   IDeployedReport,
-  IFunnelsReportPlan,
-  IInsightsReportPlan,
   IMixpanelBookmark,
   IMixpanelClientConfig,
   IMixpanelDashboard,
-  IReportPlan,
 } from "./types.js";
-import { resolveMixpanelRegion } from "./endpoints.js";
 import { buildDashboardUrl, buildMixpanelReportUrl } from "./urls.js";
 
 const DEFAULT_DASHBOARD_NAME = "Instrument Reports";
 
-export const buildInsightsBookmarkParams = (
-  plan: IInsightsReportPlan,
-): Record<string, unknown> => {
-  const params: Record<string, unknown> = {
-    sections: {
-      show: [],
-      hide: [],
-    },
-    displayOptions: {
-      chartType: "line",
-    },
-    time: {
-      dateRangeType: "inclusive",
-      window: {
-        unit: "day",
-        value: 30,
-      },
-    },
-    analysis: {
-      type: "linear",
-    },
-    series: [
-      {
-        event: plan.event,
-        name: plan.event,
-        type: "event",
-      },
-    ],
-  };
-
-  if (plan.breakdown) {
-    params.breakdowns = [
-      {
-        property: plan.breakdown,
-        resourceType: "event",
-      },
-    ];
-  }
-
-  return params;
-};
-
-export const buildFunnelsBookmarkParams = (
-  plan: IFunnelsReportPlan,
-): Record<string, unknown> => {
-  return {
-    events: plan.steps.map((event, index) => ({
-      event,
-      name: event,
-      step: index + 1,
-    })),
-    time: {
-      dateRangeType: "inclusive",
-      window: {
-        unit: "day",
-        value: 30,
-      },
-    },
-  };
-};
-
-export const buildBookmarkParams = (
-  plan: IReportPlan,
-): Record<string, unknown> => {
-  if (plan.type === "insights") {
-    return buildInsightsBookmarkParams(plan);
-  }
-
-  return buildFunnelsBookmarkParams(plan);
-};
+export {
+  buildBookmarkParams,
+  buildFunnelsBookmarkParams,
+  buildInsightsBookmarkParams,
+} from "./bookmarkParams.js";
 
 export const createDashboard = async (
   config: IMixpanelClientConfig,

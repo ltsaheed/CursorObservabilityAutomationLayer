@@ -3,7 +3,6 @@ import { describe, test } from "node:test";
 
 import { MixpanelAppApiError } from "./client.js";
 import {
-  buildBookmarkParams,
   createBookmark,
   createDashboard,
   deployDashboardPlan,
@@ -28,23 +27,6 @@ const createMockFetch = (
 };
 
 describe("packages/mixpanelClient/src/reports.ts", () => {
-  test("given insights plan input this should build conservative bookmark params", () => {
-    const params = buildBookmarkParams({
-      type: "insights",
-      name: "Checkout Retry Views",
-      description: "Daily views",
-      event: "Checkout Retry Viewed",
-      reason: "New page added",
-    });
-
-    assert.equal(Array.isArray(params.series), true);
-    assert.deepEqual((params.series as Array<{ event: string }>)[0], {
-      event: "Checkout Retry Viewed",
-      name: "Checkout Retry Viewed",
-      type: "event",
-    });
-  });
-
   test("given dashboard params this should POST to the workspace dashboards path", async () => {
     const requests: Array<{ url: string; body: unknown }> = [];
     const config: IMixpanelClientConfig = {
