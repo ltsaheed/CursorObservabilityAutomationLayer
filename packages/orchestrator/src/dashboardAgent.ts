@@ -4,8 +4,15 @@ import { fileURLToPath } from "node:url";
 
 import { Agent } from "@cursor/sdk";
 
-import type { IDashboardPlan, IInstrumentReport, IProgressReporter } from "./types.js";
+import {
+  formatPrioritizationReason,
+  rankNewEventsForReporting,
+  selectPrioritizedEvents,
+} from "./eventPrioritization.js";
+import type { IDashboardPlan, IInstrumentReport, IProgressReporter, IReportPlan } from "./types.js";
 import { dashboardPlanSchema } from "./types.js";
+
+export const MAX_REPORTS_PER_PR = 2;
 
 export interface IDashboardAgentOptions {
   dryRun: boolean;
@@ -25,81 +32,141 @@ const toTitleCase = (eventName: string): string => {
     .join(" ");
 };
 
-const isFunnelCandidate = (events: string[]): boolean => {
-  const viewedEvents = events.filter((event) => event.endsWith("_viewed"));
+const scoreReportPlan = (
+  reportPlan: IReportPlan,
+  rankedEvents: ReturnType<typeof rankNewEventsForReporting>,
+): number => {
+  const rankByEvent = new Map(rankedEvents.map((entry) => [entry.eventName, entry.score]));
 
-  return viewedEvents.length >= 2;
+  if (reportPlan.type === "insights") {
+    return rankByEvent.get(reportPlan.event) ?? 0;
+  }
+
+  const stepScores = reportPlan.steps.map((step) => rankByEvent.get(step) ?? 0);
+
+  return stepScores.reduce((sum, score) => sum + score, 0) / stepScores.length;
+};
+
+export const capDashboardPlanReports = (
+  plan: IDashboardPlan,
+  report?: IInstrumentReport,
+): IDashboardPlan => {
+  if (plan.reports.length <= MAX_REPORTS_PER_PR) {
+    return plan;
+  }
+
+  const rankedEvents = report ? rankNewEventsForReporting(report) : [];
+  const reportsToKeep =
+    report && rankedEvents.length > 0
+      ? [...plan.reports]
+          .sort(
+            (left, right) =>
+              scoreReportPlan(right, rankedEvents) - scoreReportPlan(left, rankedEvents),
+          )
+          .slice(0, MAX_REPORTS_PER_PR)
+      : plan.reports.slice(0, MAX_REPORTS_PER_PR);
+
+  const droppedCount = plan.reports.length - reportsToKeep.length;
+  const prioritizationReason = report
+    ? formatPrioritizationReason(
+        reportsToKeep
+          .flatMap((entry) => (entry.type === "insights" ? [entry.event] : entry.steps))
+          .filter((eventName, index, events) => events.indexOf(eventName) === index)
+          .slice(0, MAX_REPORTS_PER_PR),
+        rankedEvents,
+      )
+    : `Kept the first ${MAX_REPORTS_PER_PR} planned report(s).`;
+
+  return dashboardPlanSchema.parse({
+    decisions: [
+      ...plan.decisions,
+      {
+        summary: `Prioritized ${MAX_REPORTS_PER_PR} of ${plan.reports.length} planned dashboard reports`,
+        reason: `Instrument limits Mixpanel additions to ${MAX_REPORTS_PER_PR} per PR. Dropped ${droppedCount} lower-priority report(s). ${prioritizationReason}`,
+      },
+    ],
+    reports: reportsToKeep,
+  });
+};
+
+const finalizeDashboardPlan = (
+  plan: IDashboardPlan,
+  report?: IInstrumentReport,
+): IDashboardPlan => {
+  return capDashboardPlanReports(dashboardPlanSchema.parse(plan), report);
+};
+
+const buildInsightsReport = (
+  eventName: string,
+  rankedEvents: ReturnType<typeof rankNewEventsForReporting>,
+): IDashboardPlan["reports"][number] => {
+  const rank = rankedEvents.find((entry) => entry.eventName === eventName);
+  const reasonSuffix = rank ? rank.reasons.join("; ") : "Added in this PR";
+
+  if (eventName.endsWith("_viewed")) {
+    return {
+      type: "insights",
+      name: `${toTitleCase(eventName)} Trend`,
+      description: `Daily trend for ${eventName}`,
+      event: eventName,
+      reason: `Prioritized page view event: ${reasonSuffix}`,
+    };
+  }
+
+  return {
+    type: "insights",
+    name: `${toTitleCase(eventName)} Trend`,
+    description: `Daily trend for ${eventName}`,
+    event: eventName,
+    reason: `Prioritized user action event: ${reasonSuffix}`,
+  };
 };
 
 export const buildDashboardPlanDeterministic = (
   report: IInstrumentReport,
 ): IDashboardPlan => {
   const allEvents = report.newEvents;
+
+  if (allEvents.length === 0) {
+    return finalizeDashboardPlan(
+      {
+        decisions: [
+          {
+            summary: "No dashboard reports for this PR",
+            reason:
+              "newEvents is empty; skip Mixpanel deploy until instrumentation adds new events.",
+          },
+        ],
+        reports: [],
+      },
+      report,
+    );
+  }
+
+  const { events: focusEvents, ranked } = selectPrioritizedEvents(report, MAX_REPORTS_PER_PR);
   const decisions = [
     {
       summary: "Deterministic dashboard planning",
-      reason:
-        "Generated without AI using new events from the instrumentation report.",
+      reason: "Generated without AI using prioritized new events from the instrumentation report.",
     },
   ];
-  const reports: IDashboardPlan["reports"] = [];
 
-  for (const eventName of allEvents) {
-    if (eventName.endsWith("_viewed")) {
-      reports.push({
-        type: "insights",
-        name: `${toTitleCase(eventName)} Trend`,
-        description: `Daily trend for ${eventName}`,
-        event: eventName,
-        reason: `New page view event ${eventName} added in this PR`,
-      });
-    }
+  if (allEvents.length > MAX_REPORTS_PER_PR) {
+    decisions.push({
+      summary: `Prioritized ${MAX_REPORTS_PER_PR} of ${allEvents.length} new events for dashboard reports`,
+      reason: formatPrioritizationReason(focusEvents, ranked),
+    });
   }
 
-  const actionEvents = allEvents.filter(
-    (event) => !event.endsWith("_viewed") && event.includes("_"),
+  const reports = focusEvents.map((eventName) => buildInsightsReport(eventName, ranked));
+
+  return finalizeDashboardPlan(
+    {
+      decisions,
+      reports,
+    },
+    report,
   );
-
-  for (const eventName of actionEvents) {
-    reports.push({
-      type: "insights",
-      name: `${toTitleCase(eventName)} Trend`,
-      description: `Daily trend for ${eventName}`,
-      event: eventName,
-      reason: `New user action event ${eventName} added in this PR`,
-    });
-  }
-
-  if (reports.length === 0) {
-    return dashboardPlanSchema.parse({
-      decisions: [
-        {
-          summary: "No dashboard reports for this PR",
-          reason: "newEvents is empty; skip Mixpanel deploy until instrumentation adds new events.",
-        },
-      ],
-      reports: [],
-    });
-  }
-
-  if (isFunnelCandidate(allEvents)) {
-    const viewed = allEvents.filter((event) => event.endsWith("_viewed"));
-
-    if (viewed.length >= 2) {
-      reports.push({
-        type: "funnels",
-        name: "Checkout Retry Funnel",
-        description: "Conversion across newly instrumented checkout retry flow",
-        steps: viewed.slice(0, 3),
-        reason: "Multiple page view events suggest a multi-step funnel",
-      });
-    }
-  }
-
-  return dashboardPlanSchema.parse({
-    decisions,
-    reports,
-  });
 };
 
 const loadPrompt = (): string => readFileSync(PROMPT_PATH, "utf8");
@@ -142,7 +209,18 @@ export const runDashboardAgent = async (
     return plan;
   }
 
-  const prompt = `${loadPrompt()}\n\n## Instrumentation report\n\n${JSON.stringify(report, null, 2)}\n\nReturn only valid JSON matching the dashboard plan schema.`;
+  const ranked = rankNewEventsForReporting(report);
+  const prioritizationHint =
+    report.newEvents.length > MAX_REPORTS_PER_PR
+      ? `\n\n## Event prioritization hint\n\nInstrument allows at most ${MAX_REPORTS_PER_PR} dashboard reports per PR. When choosing reports, prioritize events in this order and explain your choice in \`decisions\`:\n${ranked
+          .map(
+            (entry, index) =>
+              `${index + 1}. ${entry.eventName} (score ${entry.score}: ${entry.reasons.join("; ")})`,
+          )
+          .join("\n")}`
+      : "";
+
+  const prompt = `${loadPrompt()}${prioritizationHint}\n\n## Instrumentation report\n\n${JSON.stringify(report, null, 2)}\n\nReturn only valid JSON matching the dashboard plan schema.`;
 
   try {
     const result = await Agent.prompt(prompt, {
@@ -154,11 +232,12 @@ export const runDashboardAgent = async (
     const parsed = result.result ? extractDashboardPlan(result.result) : null;
 
     if (parsed) {
+      const plan = finalizeDashboardPlan(parsed, report);
       reporter.decision("dashboard-agent", "AI plan", "Dashboard plan generated by agent");
-      reporter.setDashboardPlan(parsed);
+      reporter.setDashboardPlan(plan);
       reporter.phaseComplete("dashboard-agent", "complete");
 
-      return parsed;
+      return plan;
     }
 
     reporter.decision(
